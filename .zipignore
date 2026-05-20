@@ -1,0 +1,77 @@
+# .zipignore - Exclusions for handoff/distribution packages
+# Includes: source, tests, docs, config, infrastructure
+# Excludes: runtime artifacts, secrets, caches, IDE state
+
+# Runtime artifacts (generated during execution)
+metrics.jsonl
+*.jsonl
+*.log
+*.pid
+*.sock
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE and editor state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+._*
+
+# Version control internals
+.git/
+
+# CDK build outputs (regenerated on cdk synth)
+cdk.out/
+
+# Secrets and credentials (never distribute)
+*.pem
+*.key
+*.crt
+*.p12
+config/*.local.env
+.env.local
+.env.development
+.env.test
+
+# Package build artifacts
+dist/
+build/
+*.egg-info/
+
+# Terraform state
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Backup and archive files
+*.tar.gz
+*.zip
+*.rar
+backup/
+archives/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Lock files (recipient will regenerate)
+uv.lock

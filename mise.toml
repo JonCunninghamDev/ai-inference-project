@@ -1,0 +1,27 @@
+[tools]
+node = "22"
+python = "3.12"
+
+[tasks.install]
+description = "Install platform-agnostic deps (works on macOS and Linux)"
+run = "uv sync --extra dev --extra test"
+
+[tasks."install:gpu"]
+description = "Install with GPU deps (Linux only)"
+run = "uv sync --extra dev --extra test --extra gpu"
+
+[tasks.test]
+description = "Run unit tests"
+run = "uv run python -m pytest tests/unit -q"
+
+[tasks.demo]
+description = "Run full platform in demo mode (no AWS needed)"
+run = "uv run python -m ai_inference.demo"
+
+[tasks.dashboard]
+description = "Run metrics dashboard (reads JSONL metrics sink)"
+run = "uv run streamlit run src/ai_inference/dashboard.py"
+
+[tasks.lint]
+description = "Run linters"
+run = "uv run python -m black --check src tests && uv run python -m isort --check src tests"

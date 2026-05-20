@@ -1,0 +1,64 @@
+[project]
+name = "ai-inference"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "crowBottom", email = "jpcunningham_dev@protonmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aws-cdk-lib>=2.250.0",
+    "boto3>=1.42.94",
+    "boto3-stubs~=1.42.94",
+    "constructs>=10.6.0",
+    "openai>=2.32.0",
+    "pydantic>=2.13.3",
+    "streamlit>=1.56.0",
+    "watchtower>=3.4.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "vllm>=0.19.1",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.4.0",
+    "bandit>=1.7.5",
+    "psutil>=5.9.0",
+    "requests>=2.31.0",
+    "httpx>=0.25.0",
+]
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "moto>=4.2.0",
+    "responses>=0.23.0",
+    "httpx>=0.25.0",
+]
+monitoring = [
+    "psutil>=5.9.0",
+    "requests>=2.31.0",
+    "matplotlib>=3.7.0",
+    "pandas>=2.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+
+[tool.uv.pip]
+no-deps = false

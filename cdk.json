@@ -1,0 +1,20 @@
+{
+  "app": "python3 app.py",
+  "context": {
+    "Dev": {
+      "home_ip": "73.94.232.161",
+      "vpc_cidr": "10.0.0.0/16",
+      "description": "Development environment for RAG prototyping"
+    },
+    "Staging": {
+      "home_ip": "STAGING_GATEWAY_IP",
+      "vpc_cidr": "10.1.0.0/16",
+      "description": "Pre-production validation for air-gap protocols"
+    },
+    "Prod": {
+      "home_ip": "PRODUCTION_GATEWAY_IP",
+      "vpc_cidr": "10.2.0.0/16",
+      "description": "Production inference engine"
+    }
+  }
+}
