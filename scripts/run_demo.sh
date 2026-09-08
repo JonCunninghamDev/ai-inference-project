@@ -22,5 +22,5 @@ else
     "${script_dir}/install_dependencies.sh"
 fi
 
-echo "Starting the local demo at http://127.0.0.1:8080..."
+echo "Starting the Secure AI Inference demo..."
 exec uv run --no-sync python -m ai_inference.demo "$@"

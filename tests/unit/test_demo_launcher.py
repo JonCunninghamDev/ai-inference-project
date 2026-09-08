@@ -55,6 +55,7 @@ def test_launcher_skips_install_when_dependencies_are_ready(tmp_path: Path) -> N
 
     assert result.returncode == 0
     assert "skipping installation" in result.stdout
+    assert "Starting the Secure AI Inference demo" in result.stdout
     assert not any(call.startswith("sync ") for call in calls)
     assert calls[-1] == "run --no-sync python -m ai_inference.demo"
 
@@ -65,5 +66,6 @@ def test_launcher_installs_once_when_dependency_check_fails(tmp_path: Path) -> N
     assert result.returncode == 0
     assert "Running the one-time installer" in result.stdout
     assert "significant CPU, disk, and memory" in result.stdout
+    assert "Starting the Secure AI Inference demo" in result.stdout
     assert calls.count("sync --extra dev --extra test") == 1
     assert calls[-1] == "run --no-sync python -m ai_inference.demo"

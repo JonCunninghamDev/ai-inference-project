@@ -25,7 +25,9 @@ from ai_inference.core.priority_queue import PriorityInferenceQueue
 from ai_inference.core.reconciliation import ReconciliationConfig, ReconciliationEngine
 from ai_inference.core.reconciliation_scheduler import ReconciliationScheduler
 from ai_inference.core.result_store import InferenceResult, InMemoryResultStore, RequestStatus
+from ai_inference.demo_ui import attach_demo_ui
 from ai_inference.gateway.api import GatewaySettings, create_app
+from ai_inference.gateway.tenant import TenantPolicyEngine
 from ai_inference.inference.batching import BatchCandidate, BatchingPolicy, DynamicBatcher
 from ai_inference.inference.circuit_breaker import CircuitBreaker, CircuitBreakerPolicy
 from ai_inference.inference.gpu_scheduler import (
@@ -65,10 +67,17 @@ class InProcessPublisher:
 class DemoWorker:
     """Minimal worker that processes the in-memory queue with full platform logic."""
 
-    def __init__(self, result_store: InMemoryResultStore, metrics: MetricsCollector, audit: AuditLog) -> None:
+    def __init__(
+        self,
+        result_store: InMemoryResultStore,
+        metrics: MetricsCollector,
+        audit: AuditLog,
+        tenant_engine: TenantPolicyEngine,
+    ) -> None:
         self.result_store = result_store
         self.metrics = metrics
         self.audit = audit
+        self.tenant_engine = tenant_engine
         self.latency_tracker = LatencyTracker(
             LatencyPolicy(window_size=100, p95_threshold_ms=2000.0)
         )
@@ -91,6 +100,11 @@ class DemoWorker:
         self._gpu = GPUDeviceSnapshot(device_id="gpu-0", name="demo-gpu", total_memory_mb=49152, used_memory_mb=0, utilization_percent=0.0)
         self.circuit_breaker = CircuitBreaker(CircuitBreakerPolicy(failure_threshold=3, recovery_timeout_seconds=10.0), metrics=metrics)
         self.adapter = MockVllmAdapter(latency_ms=100.0, failure_rate=0.0)
+
+    def _release_tenant(self, payload: Mapping[str, Any]) -> None:
+        """Release the concurrency slot admitted by the demo gateway."""
+        tenant_id = TenantPolicyEngine.extract_tenant(dict(payload.get("metadata", {})))
+        self.tenant_engine.release(tenant_id)
 
     def _process_batch(self, messages: List[str]) -> None:
         candidates: List[BatchCandidate] = []
@@ -134,25 +148,29 @@ class DemoWorker:
             if not decision.scheduled:
                 print(f"  ⏸  Batch deferred: {decision.reason}")
                 for c in batch.candidates:
+                    payload = raw_by_id[c.request_id]
                     self.result_store.put(InferenceResult(
                         request_id=c.request_id, status=RequestStatus.FAILED,
-                        accepted_at=raw_by_id[c.request_id].get("timestamp", ""),
+                        accepted_at=payload.get("timestamp", ""),
                         completed_at=datetime.now(timezone.utc).isoformat(),
                         model_name=batch.model_name, error=f"GPU scheduling deferred: {decision.reason}",
                     ))
+                    self._release_tenant(payload)
                 continue
 
             # Circuit breaker gate
             if not self.circuit_breaker.allow_request():
                 print(f"  ⚡ Circuit breaker OPEN — fast-failing batch {batch.batch_id[:8]}")
                 for c in batch.candidates:
+                    payload = raw_by_id[c.request_id]
                     self.result_store.put(InferenceResult(
                         request_id=c.request_id, status=RequestStatus.FAILED,
-                        accepted_at=raw_by_id[c.request_id].get("timestamp", ""),
+                        accepted_at=payload.get("timestamp", ""),
                         completed_at=datetime.now(timezone.utc).isoformat(),
                         model_name=batch.model_name, error="Circuit breaker open",
                     ))
                     self.metrics.record_inference_failed(request_id=c.request_id, model=batch.model_name, error="circuit_breaker_open")
+                    self._release_tenant(payload)
                 continue
 
             print(f"  ▶  Batch {batch.batch_id[:8]} | model={batch.model_name} size={batch.size} device={decision.device_id}")
@@ -171,7 +189,8 @@ class DemoWorker:
             outputs = self.adapter.infer_batch(model=batch.model_name, inputs=inputs)
 
             for output in outputs:
-                accepted_at = raw_by_id[output.request_id].get("timestamp", "")
+                payload = raw_by_id[output.request_id]
+                accepted_at = payload.get("timestamp", "")
                 if output.success:
                     self.circuit_breaker.record_success()
                     self.latency_tracker.record(batch.model_name, output.duration_ms)
@@ -208,6 +227,8 @@ class DemoWorker:
                     ))
                     print(f"     ✗ {output.request_id[:8]} → failed: {output.error}")
 
+                self._release_tenant(payload)
+
     def run(self, queue: PriorityInferenceQueue) -> None:
         """Poll the priority queue forever."""
         print("  Worker ready — polling for work\n")
@@ -226,10 +247,10 @@ def main() -> None:
     print("\n╔══════════════════════════════════════════════════════╗")
     print("║   Secure Inference Platform — Demo Mode             ║")
     print("╠══════════════════════════════════════════════════════╣")
-    print("║  Gateway:  http://localhost:8080                     ║")
-    print("║  Health:   http://localhost:8080/health              ║")
-    print("║  Submit:   POST /v1/inference                       ║")
-    print("║  Poll:     GET  /v1/inference/{request_id}          ║")
+    print("║  Walkthrough: http://localhost:8080/                ║")
+    print("║  Swagger:     http://localhost:8080/docs            ║")
+    print("║  Health:      http://localhost:8080/health          ║")
+    print("║  OpenAPI:     http://localhost:8080/openapi.json    ║")
     print("╚══════════════════════════════════════════════════════╝\n")
 
     # Shared state
@@ -238,6 +259,7 @@ def main() -> None:
     metrics = MetricsCollector(jsonl_sink)
     audit = InMemoryAuditLog()
     publisher = InProcessPublisher(_work_queue)
+    tenant_engine = TenantPolicyEngine(metrics=metrics)
 
     # Gateway
     settings = GatewaySettings(
@@ -248,10 +270,18 @@ def main() -> None:
         small_context_tokens=4096,
         large_context_tokens=32768,
     )
-    app = create_app(settings=settings, publisher=publisher, result_store=result_store, metrics=metrics, audit_log=audit)
+    app = create_app(
+        settings=settings,
+        publisher=publisher,
+        result_store=result_store,
+        metrics=metrics,
+        audit_log=audit,
+        tenant_engine=tenant_engine,
+    )
+    attach_demo_ui(app)
 
     # Worker thread
-    worker = DemoWorker(result_store, metrics, audit)
+    worker = DemoWorker(result_store, metrics, audit, tenant_engine)
     worker_thread = threading.Thread(target=worker.run, args=(_work_queue,), daemon=True)
     worker_thread.start()
 
