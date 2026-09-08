@@ -18,7 +18,7 @@ from uuid import uuid4
 
 import boto3
 from fastapi import FastAPI, HTTPException, Request as FastAPIRequest, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai_inference.core.audit import AuditEvent, AuditLog, InMemoryAuditLog, NullAuditLog
 from ai_inference.core.logging import get_logger
@@ -28,6 +28,25 @@ from ai_inference.gateway.admission import AdmissionController, AdmissionDecisio
 from ai_inference.gateway.auth import AuthProvider, AuthResult, NoAuthProvider
 from ai_inference.gateway.tenant import TenantPolicyEngine
 from ai_inference.inference.router import InferenceRequest, ModelProfile, ModelRouter
+
+
+OPENAPI_TAGS = [
+    {
+        "name": "Inference",
+        "description": (
+            "Submit asynchronous inference work and retrieve its current or terminal result. "
+            "Accepted requests expose the deterministic routing decision immediately."
+        ),
+    },
+    {
+        "name": "Audit",
+        "description": "Inspect request lifecycle events recorded across the gateway and worker boundary.",
+    },
+    {
+        "name": "Operations",
+        "description": "Inspect gateway health, configured models, request counts, and admission-control state.",
+    },
+]
 
 
 class GatewaySettings(BaseModel):
@@ -57,13 +76,30 @@ class GatewaySettings(BaseModel):
 class InferenceGatewayRequest(BaseModel):
     """Client facing inference request."""
 
-    prompt: str = Field(..., min_length=1)
-    context: str = ""
-    event_type: str = "general_inference"
-    priority: int = Field(default=5, ge=1, le=10)
-    requested_model: Optional[str] = None
-    metadata: Dict[str, str] = Field(default_factory=dict)
-    idempotency_key: Optional[str] = None
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "prompt": "Summarize why deterministic routing matters for secure AI inference.",
+                    "context": (
+                        "The platform separates the public control plane from isolated model execution "
+                        "and exposes a reason code for every routing decision."
+                    ),
+                    "event_type": "general_inference",
+                    "priority": 5,
+                    "metadata": {"tenant": "swagger-demo"},
+                }
+            ]
+        }
+    )
+
+    prompt: str = Field(..., min_length=1, description="User instruction or task to send through the inference platform")
+    context: str = Field(default="", description="Optional supporting context supplied with the prompt")
+    event_type: str = Field(default="general_inference", description="Task category used by deterministic routing policy")
+    priority: int = Field(default=5, ge=1, le=10, description="Request priority from 1 (lowest) to 10 (highest)")
+    requested_model: Optional[str] = Field(default=None, description="Optional explicit model request")
+    metadata: Dict[str, str] = Field(default_factory=dict, description="Request metadata such as tenant identity in demo mode")
+    idempotency_key: Optional[str] = Field(default=None, description="Optional caller-supplied idempotency key")
 
 
 class RoutingDecisionResponse(BaseModel):
@@ -168,10 +204,29 @@ def create_app(
     app = FastAPI(
         title="Secure Inference Gateway",
         version="0.2.0",
-        description="Control-plane API for submitting secure inference work to isolated workers.",
+        description=(
+            "Control-plane API for submitting secure inference work to isolated workers. "
+            "Requests are admitted, tenant policy is applied, a deterministic routing decision "
+            "is exposed, and work is queued for asynchronous execution.\n\n"
+            "**Suggested local walkthrough:** check `/health`, submit `POST /v1/inference`, "
+            "poll `GET /v1/inference/{request_id}`, then inspect `GET /v1/audit/{request_id}`."
+        ),
+        openapi_tags=OPENAPI_TAGS,
+        swagger_ui_parameters={
+            "displayRequestDuration": True,
+            "filter": True,
+            "tryItOutEnabled": True,
+            "docExpansion": "list",
+            "defaultModelsExpandDepth": 1,
+        },
     )
 
-    @app.get("/health")
+    @app.get(
+        "/health",
+        tags=["Operations"],
+        summary="Inspect gateway health and load",
+        description="Returns configured models, active request counts, and admission-control state.",
+    )
     def health() -> Dict[str, Any]:
         pending = result_store.scan_by_status(RequestStatus.PENDING)
         processing = result_store.scan_by_status(RequestStatus.PROCESSING)
@@ -190,7 +245,12 @@ def create_app(
             },
         }
 
-    @app.get("/v1/audit/{request_id}")
+    @app.get(
+        "/v1/audit/{request_id}",
+        tags=["Audit"],
+        summary="Retrieve a request audit trail",
+        description="Returns the recorded lifecycle events for one request across gateway and worker components.",
+    )
     def get_audit_trail(request_id: str) -> Dict[str, Any]:
         trail = audit.get_trail(request_id)
         if not trail:
@@ -204,6 +264,12 @@ def create_app(
         "/v1/inference",
         response_model=InferenceGatewayResponse,
         status_code=status.HTTP_202_ACCEPTED,
+        tags=["Inference"],
+        summary="Submit asynchronous inference work",
+        description=(
+            "Authenticates and admits the request, applies tenant policy, selects a model using "
+            "deterministic routing, enqueues the work, and returns a request ID plus the routing decision."
+        ),
     )
     def submit_inference(request: InferenceGatewayRequest, raw_request: FastAPIRequest) -> InferenceGatewayResponse:
         # Authentication check
@@ -332,6 +398,9 @@ def create_app(
     @app.get(
         "/v1/inference/{request_id}",
         response_model=InferenceResultResponse,
+        tags=["Inference"],
+        summary="Retrieve inference status or result",
+        description="Poll an accepted request until it reaches a completed or failed terminal state.",
     )
     def get_inference_result(request_id: str) -> InferenceResultResponse:
         record = result_store.get(request_id)
