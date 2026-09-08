@@ -99,6 +99,7 @@ DEMO_HTML = r"""<!doctype html>
     .result { margin-top: 14px; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: #081522; display: none; }
     .result h3 { margin: 0 0 8px; font-size: 1rem; }
     .result-copy { color: #d8f2ff; line-height: 1.5; white-space: pre-wrap; }
+    .result pre { white-space: pre-wrap; word-break: break-word; color: #cfe2f5; font-size: .76rem; }
     .proof { display: none; margin-top: 16px; }
     .proof-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
     .proof-item { border: 1px solid var(--border); border-radius: 10px; padding: 11px; background: #081522; }
@@ -267,6 +268,10 @@ DEMO_HTML = r"""<!doctype html>
       explain(name);
     }
 
+    function stageIsDone(name) {
+      return document.querySelector(`[data-stage="${name}"]`).classList.contains('done');
+    }
+
     function log(message, kind = '') {
       const line = document.createElement('div');
       line.className = `log-line ${kind}`.trim();
@@ -301,6 +306,17 @@ DEMO_HTML = r"""<!doctype html>
       return body;
     }
 
+    async function revealExecutionPath() {
+      stage('queue', 'done');
+      for (const name of ['batch', 'scheduler', 'inference']) {
+        if (!stageIsDone(name)) {
+          activate(name);
+          await sleep(280);
+          stage(name, 'done');
+        }
+      }
+    }
+
     async function pollForResult(id) {
       for (let attempt = 0; attempt < 40; attempt += 1) {
         await sleep(250);
@@ -311,14 +327,8 @@ DEMO_HTML = r"""<!doctype html>
         } else if (body.status === 'processing') {
           stage('queue', 'done');
           activate('batch');
-          await sleep(120);
-          stage('batch', 'done');
-          activate('scheduler');
-          await sleep(120);
-          stage('scheduler', 'done');
-          activate('inference');
         } else if (body.status === 'completed') {
-          ['queue', 'batch', 'scheduler', 'inference'].forEach(name => stage(name, 'done'));
+          await revealExecutionPath();
           activate('result');
           return body;
         } else if (body.status === 'failed') {
@@ -378,6 +388,7 @@ DEMO_HTML = r"""<!doctype html>
           log('Inference completed and terminal result is available.', 'ok');
         }
 
+        await sleep(220);
         activate('audit');
         const audit = await jsonOrThrow(await fetch(`/v1/audit/${accepted.request_id}`));
         stage('audit', 'done');
