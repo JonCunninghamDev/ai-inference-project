@@ -69,6 +69,9 @@ class DemoWorker:
         self.result_store = result_store
         self.metrics = metrics
         self.audit = audit
+        self.latency_tracker = LatencyTracker(
+            LatencyPolicy(window_size=100, p95_threshold_ms=2000.0)
+        )
         self.router = ModelRouter(
             profiles=[
                 ModelProfile(name="demo-small", max_context_tokens=4096, priority=10, description="fast"),
@@ -88,7 +91,6 @@ class DemoWorker:
         self._gpu = GPUDeviceSnapshot(device_id="gpu-0", name="demo-gpu", total_memory_mb=49152, used_memory_mb=0, utilization_percent=0.0)
         self.circuit_breaker = CircuitBreaker(CircuitBreakerPolicy(failure_threshold=3, recovery_timeout_seconds=10.0), metrics=metrics)
         self.adapter = MockVllmAdapter(latency_ms=100.0, failure_rate=0.0)
-        self.latency_tracker = LatencyTracker(LatencyPolicy(window_size=100, p95_threshold_ms=2000.0))
 
     def _process_batch(self, messages: List[str]) -> None:
         candidates: List[BatchCandidate] = []

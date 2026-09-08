@@ -1,380 +1,298 @@
-# Secure Inference Platform
+# Secure AI Inference Control Plane
 
-Package name: `ai_inference`. Repository: `ai-inference`.
+A Python reference implementation of the control plane and execution policies behind a secure, multi-tenant AI inference service.
+
+This project focuses on the platform behavior around model inference: admission control, tenant isolation, deterministic routing, batching, GPU-aware scheduling, failure containment, result tracking, reconciliation, auditability, and scaling decisions. It is an engineering prototype, not a production product or a complete retrieval-augmented generation application.
+
+## Project status
+
+The core policy modules and an in-process request lifecycle are implemented and covered by automated tests. An earlier revision of the service was successfully deployed and run on AWS. The current revision includes additional modules and a package rename, so its AWS deployment path needs to be revalidated after the remaining repository-level regressions are repaired.
+
+Status as of September 8, 2026:
+
+| Area | Current state |
+| --- | --- |
+| Core routing, batching, scheduling, resilience, and tenant policies | Implemented and unit tested |
+| In-process gateway-to-worker lifecycle | Implemented and exercised by the unit suite |
+| Unit suite | 238 passing tests |
+| Statement coverage | 76% across `src/ai_inference` |
+| Security scan | No medium- or high-severity Bandit findings |
+| Local demo | Startup defect corrected in the development worktree; health, submission, processing, and result polling verified locally |
+| Standalone integration suite | Not green; one test file is malformed and three health-monitoring tests require updates |
+| AWS deployment | An earlier revision was deployed and run successfully; the current CDK entry point retains a pre-rename import and needs revalidation |
+| GitHub Actions | Workflow is present but malformed on the default branch; there is not yet a successful CI run |
+| Production readiness | Engineering prototype; prior deployment success does not establish production readiness for the current revision |
+
+The immediate goal is repository hardening: repair CI and the CDK entry point, add a demo startup regression test, bring integration and quality checks to green, and publish reproducible evidence for those results.
 
 ## Why this project exists
 
-Many AI prototypes assume constant cloud access, abundant GPU capacity, and simple request paths. Those assumptions do not hold in secure enterprise, defense, critical infrastructure, or disconnected environments.
+AI prototypes often assume constant network access, abundant compute, and a direct request-to-model path. Secure enterprise and constrained environments introduce harder questions:
 
-This project explores a harder pattern: how to run private AI workloads when data boundaries matter, network access may be constrained, and operators need observable, explainable, reliable inference behavior.
+- How should the system reject work before overload becomes failure?
+- How can model selection remain deterministic and explainable?
+- How should latency, priority, and GPU capacity influence execution?
+- How can one tenant be prevented from exhausting shared capacity?
+- What happens when inference becomes slow, unavailable, or partially completes?
+- How can operators reconstruct a request's lifecycle and safely recover stale work?
 
-The goal is not just to answer questions over documents. The goal is to build the control plane and execution path for secure model serving.
+This repository explores those questions through explicit policies and replaceable interfaces. It favors observable decisions over opaque automation.
 
-## Design philosophy
-
-The system is being built one module at a time. Each module answers a real platform question:
-
-1. How should the platform choose a model for a request?
-2. How should clients submit work without coupling directly to workers?
-3. How should requests be batched without violating latency constraints?
-4. How should GPU capacity affect scheduling decisions?
-5. How should clients know when their work is done?
-6. How should operators observe queue delay, model latency, failure rates, and throughput?
-7. How should the system behave when part of the environment is degraded?
-
-The project intentionally favors deterministic, explainable decisions over opaque magic. In secure systems, it is not enough for the platform to work. Operators need to understand why a request was routed, queued, retried, or rejected.
-
-## Current architecture
+## Architecture
 
 ```mermaid
-graph LR
-    C[Client] --> G[Inference Gateway]
-    G --> AC[Admission Control]
-    AC --> TP[Tenant Policy]
-    TP --> R[Model Router]
-    R --> Q[SQS / In-Process Queue]
+flowchart TD
+    C[Client] --> G[FastAPI Gateway]
+    G --> A[Authentication and Admission]
+    A --> T[Tenant Policy]
+    T --> R[Deterministic Router]
+    R --> Q[Priority Queue or SQS]
     Q --> B[Dynamic Batcher]
     B --> S[GPU-Aware Scheduler]
     S --> CB[Circuit Breaker]
-    CB --> V[vLLM Batch Adapter]
+    CB --> V[vLLM Adapter]
     V --> RS[Result Store]
-    G --> RS
     RS --> C
 ```
 
-Background processes:
+Supporting processes provide reconciliation, request TTL enforcement, audit events, metrics collection, and autoscaling decisions.
 
-```mermaid
-graph LR
-    RS[Result Store] --> REC[Reconciliation Engine]
-    REC --> Q[Queue]
-    REC --> SNS[SNS / Bedrock]
-    M[Metrics Sink] --> AS[Autoscaler]
-```
+The gateway is the control-plane boundary. It validates and admits requests, applies tenant policy, records the routing decision, and places work on a queue. Workers own batching, capacity checks, inference execution, result persistence, and terminal lifecycle events.
 
-The architecture separates the control plane from the execution plane. The gateway enforces system-wide and per-tenant limits before accepting work. The worker fleet uses GPU scheduling, circuit breaking, and concurrent batch inference. Background processes handle recovery and scaling.
+## Implemented capabilities
 
-## Demo mode
+### Gateway and policy enforcement
 
-Run the entire platform in a single process with no AWS credentials, no Docker, and no GPU:
+- FastAPI endpoints for submission, result polling, audit lookup, and health reporting
+- Bearer API-key authentication with key-to-tenant mapping
+- System-wide admission control based on queue depth and active request counts
+- Per-tenant sliding-window rate limits, concurrency caps, and priority adjustment
+- Idempotency-key derivation and request lifecycle initialization
+
+### Explainable routing and execution
+
+- Deterministic model selection with explicit reason codes
+- Routing based on requested model, task type, context size, priority, and model limits
+- Latency-aware avoidance after a configurable minimum sample count
+- Conservative dynamic batching by model, event type, priority, token budget, and batchability
+- GPU scheduling policy based on memory reserve, utilization, and model-specific batch limits
+- Three priority lanes with FIFO ordering inside each lane
+
+### Resilience and recovery
+
+- Closed, open, and half-open circuit-breaker states
+- Request TTL enforcement before inference
+- Pending, processing, completed, and failed result states
+- Reconciliation modes for observation, dry-run analysis, resubmission, and failure handling
+- Optional Bedrock-assisted failure analysis and SNS notification interfaces
+- Graceful worker shutdown and a runtime processing kill switch
+
+### Observability and operations
+
+- Structured JSON logging
+- Request-level audit events
+- JSONL and in-memory metrics sinks
+- Queue wait, inference latency, throughput, failure, scheduling, and scaling metrics
+- Streamlit metrics dashboard
+- Autoscaling policy with log-only, ECS, and Auto Scaling Group executors
+
+### AWS infrastructure definitions
+
+The CDK stack models:
+
+- A VPC with isolated subnets and selected VPC endpoints
+- An encrypted SQS queue and dead-letter queue
+- A KMS-encrypted DynamoDB result table with TTL and point-in-time recovery
+- CloudWatch log groups, metrics, alarms, and dashboards
+- Worker IAM permissions
+- An SSM processing kill switch
+- Site-to-site VPN resources
+
+These definitions demonstrate infrastructure intent and build on a previously successful deployment. They should not be interpreted as proof that the current revision is deployable until CDK synthesis and deployment validation are restored in CI.
+
+## Execution modes
+
+| Mode | Purpose | Current verification |
+| --- | --- | --- |
+| In-memory components | Fast policy development and isolated tests | Verified by the passing unit suite |
+| In-process lifecycle | Gateway, queue, worker, result store, audit, and metrics without AWS | Exercised by tests and a local submit-to-completion smoke test after the initialization fix |
+| AWS-backed adapters | SQS, DynamoDB, CloudWatch, SNS, Bedrock, ECS, and ASG boundaries | Implemented; an earlier service revision was deployed successfully, while the current revision awaits revalidation |
+| vLLM adapter | OpenAI-compatible private model endpoint | Implemented and tested with mocked HTTP/client behavior; current performance evidence is not included |
+
+## Local setup
+
+Requirements:
+
+- Python 3.12
+- [`uv`](https://docs.astral.sh/uv/)
+- Optional: [`mise`](https://mise.jdx.dev/) for task aliases
+
+Install the development and test dependencies:
 
 ```bash
-mise run demo
+uv sync --extra dev --extra test
 ```
 
-Then in another terminal:
+Run the currently verified suite:
 
 ```bash
-# Submit a request
-curl -s -X POST http://localhost:8080/v1/inference \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Analyze this threat", "context": "Hostile actor near perimeter", "event_type": "security_review"}'
-
-# Poll for result (use request_id from response above)
-curl -s http://localhost:8080/v1/inference/{request_id}
+uv run pytest tests/unit -q
 ```
 
-Demo mode exercises the full lifecycle: gateway → routing → batching → GPU scheduling → mock inference → result retrieval. The in-process queue replaces SQS, and a shared in-memory result store replaces DynamoDB.
-
-## Completed platform modules
-
-### Module 1: Model Routing
-
-Deterministic model routing with reason codes. The router considers explicit model requests, estimated context size, task type complexity, request priority, model context limits, and batching support. Every decision is inspectable.
-
-### Module 2: Inference Gateway API
-
-FastAPI control plane entry point. Accepts requests, validates shape, derives idempotency keys, runs routing before enqueueing, and returns the routing decision to the caller. Keeps request intake separate from private model execution.
-
-### Module 3: Dynamic Batching
-
-Deterministic batching planner between queue intake and model execution. Groups requests only when operationally compatible: same model, same event type, marked batchable, not high priority, within batch size and token budget limits.
-
-### Module 4: GPU-Aware Scheduling
-
-Capacity gate before batch execution. Models GPU device state, enforces memory reserve, utilization thresholds, and model-specific batch size limits. Defers work when capacity is unsafe. Uses config-fed snapshots with a clean policy boundary for later live inventory.
-
-### Module 5: Result Store and Retrieval
-
-Closes the async loop. Gateway marks requests as pending on acceptance. Worker updates status through processing → completed/failed. Clients poll `GET /v1/inference/{request_id}` for results.
-
-Two implementations:
-- `InMemoryResultStore` for local dev and demo mode
-- `DynamoResultStore` for deployed environments (KMS-encrypted table with TTL and point-in-time recovery)
-
-### Module 6: Reconciliation and Replay
-
-Automated recovery for requests stuck in non-terminal states. Four configurable modes, all defaulting to disabled:
-
-- **Dry Run** — scans and logs what would happen, changes nothing. Lets operators preview blast radius.
-- **Heal** — resubmits stale pending requests to the queue; marks stale processing requests as failed.
-- **Bedrock Analysis** — on unrecoverable failure, calls Claude to produce a structured root cause explanation for operators.
-- **SNS Notification** — publishes to a topic only after all automated recovery is exhausted. Never fires for transient failures that self-heal.
-
-Design constraint: Bedrock or SNS failures are non-fatal. Reconciliation always completes regardless of optional integration availability.
-
-### Module 7: Structured Logging
-
-JSON structured logger with `get_logger(component)`. All components emit single-line JSON with timestamp, level, component, message, plus arbitrary keyword fields. Per-component CloudWatch log groups in CDK.
-
-### Module 8: Observability Metrics
-
-JSONL metrics sink with per-event timing at every lifecycle point. Three sink implementations: `JsonlMetricsSink` (air-gapped file), `InMemoryMetricsSink` (testing/demo), `NullMetricsSink` (disabled). Events emitted at: request accepted, inference started/completed/failed, batch built, scheduling decision, reconciliation pass, queue wait time.
-
-### Module 9: Admission Control
-
-System-wide backpressure at the gateway. Checks pending/processing counts before accepting work. Returns 429 with Retry-After header when over threshold. Three rejection gates in priority order: queue depth → pending → processing.
-
-### Module 10: Tenant-Aware Policies
-
-Per-tenant sliding window rate limits, concurrency caps, and priority boost. One tenant hitting limits doesn’t block others. Tenant extracted from request metadata or auth-derived identity.
-
-### Module 11: vLLM Batch Adapter
-
-Concurrent batch inference via ThreadPoolExecutor to maximize server-side GPU batching. `InferenceAdapter` protocol boundary so the real vLLM client, a mock, or a future TensorRT-LLM backend can be swapped without changing worker logic.
-
-### Module 12: Worker Pool Autoscaling
-
-Scale-up triggers: queue wait time exceeds target, scheduling deferrals spike, utilization too high. Scale-down when workers idle beyond threshold. Cooldown prevents thrashing. Capped at min/max bounds. Dry-run by default.
-
-### Module 13: Circuit Breaker
-
-Three-state machine (closed → open → half-open) protecting downstream inference calls. Trips after N consecutive failures, fast-fails immediately when open, probes recovery after timeout. Manual reset for operator override.
-
-### Module 14: Worker Execution Integration
-
-Wires the circuit breaker and vLLM batch adapter into the production worker loop. The worker's `process_batch` method now:
-
-1. Checks GPU scheduling (existing)
-2. Gates on circuit breaker state — fast-fails the entire batch if open
-3. Sends all batch items through the `InferenceAdapter` protocol concurrently
-4. Records success/failure per item, updating circuit breaker state
-5. Releases tenant concurrency slots on completion (automatic `tenant.release()`)
-
-The demo worker uses the same pattern with `MockVllmAdapter` and a local circuit breaker. No separate mock inference path — both production and demo use the adapter protocol.
-
-### Module 15: Audit Trail
-
-Append-only lifecycle log for every request. Records transitions (accepted, routed, processing, completed, failed) with timestamp, component, and structured detail. Three implementations:
-
-- `InMemoryAuditLog` — for dev and demo mode
-- `JsonlAuditLog` — append-only local file, air-gapped compatible
-- `NullAuditLog` — when auditing is disabled
-
-Gateway emits `accepted` events. Worker emits `completed` and `failed` events. The trail for any request is retrievable by ID for debugging or compliance review.
-
-### Module 16: Latency-Aware Routing
-
-Closed-loop feedback from observed inference latency back into routing decisions. A `LatencyTracker` maintains a sliding window of per-model P95 latency. When the default model's P95 exceeds a configurable threshold, the router avoids it in favor of a non-degraded alternative — with an explicit `LATENCY_AVOIDANCE` reason code.
-
-Design constraints:
-- Explicit model requests, high-priority requests, and complex task routing are never overridden by latency
-- If all models are degraded, the router falls through to the normal default (no infinite avoidance loop)
-- The tracker requires a minimum sample count before judging (avoids cold-start false positives)
-- Every latency-influenced decision is inspectable via the reason code and notes field
-
-### Module 17: Priority Queues
-
-FIFO with priority lanes so high-priority requests skip ahead of normal traffic. Three lanes (high/normal/low) with strict drain ordering. Priority mapping from the request priority field:
-
-- Priority 1–2 → high lane
-- Priority 3–7 → normal lane
-- Priority 8–10 → low lane
-
-FIFO ordering is preserved within each lane. The demo mode publisher routes requests into the correct lane based on their priority field. In production, this maps to separate SQS queues or FIFO message group IDs.
-
-### Module 18: Gateway Authentication
-
-API key authentication at the gateway before any admission or routing logic runs. Validates `Authorization: Bearer <key>` headers against a configured key-to-tenant mapping.
-
-- `ApiKeyAuthProvider` — maps keys to tenant identities
-- `NoAuthProvider` — allows all requests (demo mode)
-- Auth-derived tenant identity takes precedence over metadata-supplied tenant
-- Returns 401 Unauthorized for missing or invalid credentials
-- Gate order: auth → admission → tenant policy → routing
-
-### Module 19: End-to-End Integration Test
-
-Proves the system works as a unit. A single test file starts all platform components in-process and exercises:
-
-- Full lifecycle: submit → queue → process → poll result
-- Priority ordering: high-priority requests processed first
-- Auth rejection: invalid/missing keys return 401
-- Audit trail population across gateway and worker
-- Metrics emission at lifecycle points
-- Routing decisions for complex vs simple tasks
-- Batch processing of multiple requests
-- Pending status before worker runs, 404 for unknown IDs
-
-### Module 20: Reconciliation Scheduler
-
-Background thread that runs the reconciliation engine on a fixed interval. Configurable interval, emits metrics per pass, graceful start/stop. Demo mode runs it in dry-run mode (logs stale requests but doesn't heal).
-
-### Module 21: Audit Trail API
-
-`GET /v1/audit/{request_id}` exposes the append-only lifecycle trail to operators without SSH access. Returns 404 for unknown requests.
-
-### Module 22: Health Endpoint Enrichment
-
-`GET /health` now includes pending/processing request counts and admission policy state. Gives operators immediate visibility into system load.
-
-### Module 23: Request TTL
-
-Auto-expires requests that exceed a configurable max age (default 300s). The worker checks TTL before inference — expired requests are marked failed, deleted from the queue, and emit an `expired` audit event. Prevents unbounded staleness.
-
-### Module 24: Production Worker Wiring
-
-The production worker now fully initializes from config:
-
-- `DynamoResultStore` when a table name is configured (falls back to in-memory)
-- `CircuitBreaker` with configurable failure threshold and recovery timeout
-- `LatencyTracker` with configurable window size, P95 threshold, and min samples
-- `RequestTTL` with configurable max age
-- `VllmBatchAdapter` from vLLM URL config
-- Latency observations fed back to the tracker on successful inference
-- Router receives the latency tracker for latency-aware decisions
-
-### Module 25: Autoscaler Executor
-
-Executes scaling decisions produced by the Autoscaler. Three implementations:
-
-- `LogOnlyExecutor` — logs decisions without acting (default/dry-run)
-- `EcsScalingExecutor` — calls `update_service` on an ECS service
-- `AsgScalingExecutor` — calls `set_desired_capacity` on an ASG
-
-Protocol boundary means any compute backend can be plugged in.
-
-### Module 26: Metrics Dashboard
-
-Streamlit dashboard reading the JSONL metrics sink. Displays:
-
-- Top-level KPIs: total requests, completed, failed, avg latency, req/min
-- Latency distribution with P95
-- Queue wait time over time
-- Model and event type breakdown
-- Throughput timeline (requests per minute)
-- Circuit breaker transitions
-- Scaling decisions
-
-Works without AWS credentials. Demo mode writes to `metrics.jsonl` which the dashboard reads. Run with `mise run dashboard`.
-
-## Infrastructure (CDK)
-
-The CDK stack provisions:
-
-- VPC with isolated subnets and PrivateLink endpoints (SQS, CloudWatch Logs, SSM)
-- SQS inference queue with DLQ, KMS encryption
-- DynamoDB result table with KMS encryption, PITR, TTL
-- Per-component CloudWatch log groups (gateway, worker, reconciliation, scheduler) with appropriate retention
-- CloudWatch dashboard, alarms (queue depth, DLQ, worker health)
-- Worker IAM role with least-privilege grants
-- SSM kill switch for runtime processing control
-- Site-to-site VPN for secure connectivity
-
-## Key tradeoffs
-
-### Failure notification strategy
-
-The reconciliation engine currently uses SNS as the notification channel for unrecoverable failures. This is a deliberate starting point, not a permanent commitment.
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **SNS (current)** | Native AWS integration; fan-out to email, Lambda, SQS; already in CDK stack; cheap; only fires after all retries exhausted | Another failure mode if publish fails; requires subscription management; no rich context in email |
-| **Sentry** | Structured error tracking with stack traces; deduplication; issue assignment; integrates with Slack/PagerDuty | External dependency; may not be available in air-gapped environments; cost at scale |
-| **Direct Slack webhook** | Immediate visibility in team channels; rich message formatting; low latency | Tight coupling to a single notification channel; no fan-out; webhook rotation |
-| **CloudWatch Alarm → SNS** | Metric-driven; threshold-based; native AWS | Requires custom metric emission; less context per alert; alarm fatigue risk |
-| **EventBridge → multiple targets** | Decoupled event routing; rule-based filtering; multiple consumers | More infrastructure to manage; overkill for simple failure notification |
-
-The right answer depends on the deployment environment. In a fully air-gapped network, SNS with an internal email relay may be the only option. In a connected enterprise environment, Sentry with Slack integration provides richer operator experience. The `SnsPublisher` protocol boundary means swapping the notification backend requires implementing one method — no reconciliation logic changes.
-
-The key design constraint is unchanged regardless of backend: notifications fire only after automated recovery is exhausted. Transient failures that self-heal should never page an operator.
-
-### SQS first, not Kafka first
-
-SQS provides durable queueing, retries, and dead letter handling without introducing a full streaming platform too early. Kafka may make sense later for higher throughput or partitioned ordering.
-
-### Deterministic routing first, not learned routing first
-
-A learned routing policy might improve performance but would make the system harder to debug. Deterministic rules mean every decision is explainable.
-
-### Async inference first, not synchronous inference first
-
-Queue-based async inference gives the platform room for batching, scheduling, retries, and load shedding. A synchronous endpoint can be added later for low-latency use cases.
-
-### Conservative batching first, not maximum packing first
-
-Grouping by model and event type leaves some throughput on the table but protects correctness and keeps policy enforcement simpler.
-
-### Config-fed GPU snapshots first, not full cluster orchestration first
-
-Separating scheduling policy from inventory collection keeps the system testable and reasoning visible. Live NVML or fleet inventory can replace the data source without rewriting placement logic.
-
-## Testing
+Generate the locally verified coverage report:
 
 ```bash
-mise run test
+uv run pytest tests/unit -q --cov=ai_inference --cov-report=term
 ```
 
-Current result:
+Expected result at the current commit:
 
 ```text
-145 passed
+238 passed
+TOTAL 2257 statements, 545 missed, 76% coverage
 ```
 
-Tests cover routing, gateway endpoints, admission control, tenant policies, vLLM batch adapter, autoscaling, circuit breaker, result store lifecycle, reconciliation modes, structured logging, metrics collection and sinks, batching rules, GPU scheduling, CDK assertions, worker health, config validation, and message processing.
+The repository also defines these `mise` tasks:
 
-## Running
+| Command | Intended purpose | Current state |
+| --- | --- | --- |
+| `mise run install` | Install development and test dependencies | Available |
+| `mise run test` | Run `tests/unit` | Passing locally |
+| `mise run lint` | Run Black and isort checks | Currently failing |
+| `mise run demo` | Start the in-process platform | Verified locally after the development initialization-order fix |
+| `mise run dashboard` | Start the Streamlit metrics dashboard | Implemented; expects a metrics JSONL file |
 
-| Command | What it does |
-|---------|-------------|
-| `mise run demo` | Full platform in demo mode (no AWS) |
-| `mise run test` | Run unit tests |
-| `mise run install` | Install deps (macOS/Linux, no GPU) |
-| `mise run install:gpu` | Install with vLLM + CUDA (Linux only) |
-| `mise run lint` | Run linters |
+## Development workflow
 
-## Platform roadmap
+The repository uses two long-lived branches:
 
-Completed:
+| Branch | Role |
+| --- | --- |
+| `main` | Production history. Updated only by a release pull request from `develop`. |
+| `develop` | Integration and test branch. Contains everything in `main` plus work intended for the next release. |
 
-- Model Routing
-- Inference Gateway API
-- Dynamic Batching
-- GPU-Aware Scheduling
-- Result Store and Retrieval
-- Reconciliation and Replay
-- Structured Logging and Observability Infrastructure
-- Quantitative Metrics (JSONL sink, per-event timing, queue wait, batch/scheduling metrics)
-- Admission Control and Backpressure
-- Tenant-Aware Policies
-- vLLM Batch Inference Adapter
-- Worker Pool Autoscaling
-- Circuit Breaker
-- Worker Execution Integration (circuit breaker + adapter wired into production loop)
-- Audit Trail
-- Latency-Aware Routing
-- Priority Queues
-- Gateway Authentication
-- End-to-End Integration Test
-- Reconciliation Scheduler
-- Audit Trail API
-- Health Endpoint Enrichment
-- Request TTL
-- Production Worker Wiring
-- Autoscaler Executor
-- Metrics Dashboard
-- Demo Mode
+All normal changes are made on short-lived branches created from an up-to-date `develop` branch. Those branches are merged into `develop` through pull requests after automated checks pass. When a group of changes is ready for production, `develop` is merged into `main` through a release pull request.
 
-The platform is feature-complete.
+Feature pull requests may be squash-merged into `develop`. Release pull requests from `develop` to `main` use a merge commit so the shared ancestry is preserved. After a release, `develop` is advanced to the resulting `main` commit before the next feature branch is created.
+
+```mermaid
+flowchart LR
+    F[feature/*] --> D[develop]
+    D --> M[main]
+    M -. sync after release .-> D
+```
+
+Direct feature commits to `main` or `develop` are avoided.
+
+## API shape
+
+The gateway exposes four primary endpoints:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/v1/inference` | Validate, authorize, route, and enqueue a request |
+| `GET` | `/v1/inference/{request_id}` | Retrieve request status or its terminal result |
+| `GET` | `/v1/audit/{request_id}` | Retrieve recorded lifecycle events |
+| `GET` | `/health` | Inspect service state, request counts, and admission status |
+
+This is an asynchronous inference design. Accepted work returns a request ID and routing metadata; clients poll the result endpoint. Streaming and synchronous response paths are not currently implemented.
+
+## Key design decisions
+
+### Deterministic routing before learned routing
+
+Every routing outcome includes a reason code and supporting notes. This makes behavior reproducible and debuggable while the platform policies are still evolving.
+
+### Queue-based execution before synchronous inference
+
+Separating intake from execution creates room for backpressure, priority, batching, retry behavior, recovery, and load shedding. The tradeoff is that clients need a polling or future event-delivery mechanism.
+
+### SQS before Kafka
+
+SQS provides durable queueing, retry behavior, and dead-letter handling without introducing a streaming platform. Kafka may be justified later if throughput, ordering, or replay requirements exceed the simpler queue model.
+
+### Conservative batching before maximum utilization
+
+Requests are grouped only when their model, event type, priority, token budget, and batching policy are compatible. This sacrifices some packing efficiency to keep execution rules predictable.
+
+### Policy boundaries before live infrastructure discovery
+
+GPU scheduling currently consumes supplied device snapshots. This keeps placement rules testable and allows live NVML or fleet inventory to be introduced without rewriting the scheduling policy.
+
+### Automated recovery before operator notification
+
+Reconciliation can inspect or heal stale requests before notifying an operator. Optional analysis and notification failures are treated as non-fatal so they do not prevent the reconciliation pass from completing.
+
+## Security boundaries
+
+The project includes security-oriented controls, but the word "secure" describes design intent rather than a certification or completed security assessment.
+
+Implemented controls include:
+
+- Gateway authentication and tenant derivation
+- Per-tenant resource policies
+- KMS encryption in the AWS infrastructure definitions
+- Isolated-subnet infrastructure design
+- Least-privilege-oriented IAM grants
+- Append-only audit implementations
+- A runtime kill switch
+- Failure containment through circuit breaking and admission control
+
+Current boundaries include:
+
+- Authentication is API-key based; OAuth, workload identity, and mutual TLS are not implemented
+- Demo mode intentionally uses a no-auth provider
+- The repository has no formal threat model, penetration-test evidence, or compliance attestation
+- An earlier AWS deployment succeeded, but the current revision has not been revalidated after the package rename and later module additions
+- Bedrock failure analysis would require an explicit redaction and data-handling policy before use with sensitive records
+
+## Known limitations
+
+- The demo initialization-order regression must land with a regression test so startup remains verified.
+- The CDK and legacy command entry points retain imports from the former `air_gapped_rag` package name.
+- The GitHub Actions workflow and one older integration test were committed with escaped newline characters and cannot be parsed normally.
+- Three health-monitoring integration tests have outdated worker configuration mocks.
+- A top-level `pytest` invocation also collects `scripts/send_test.py`, which creates an AWS client during import.
+- Black, isort, flake8, and mypy are not currently green as a combined quality gate.
+- Reconciliation does not persist and faithfully replay the original request payload; its resubmission payload is synthetic.
+- Deployed priority behavior is not yet mapped to separate SQS queues or FIFO message groups.
+- Gateway and worker must be configured to use the same DynamoDB result table in a deployed environment; that path is not validated end to end.
+- The repository does not retain current benchmark evidence for vLLM throughput, GPU placement, autoscaling, VPN connectivity, or failure-recovery behavior.
+
+## Repository layout
+
+```text
+src/ai_inference/
+├── core/            # worker, result lifecycle, reconciliation, metrics, audit, scaling
+├── gateway/         # API, authentication, admission control, tenant policies
+├── inference/       # routing, batching, GPU scheduling, latency, circuit breaker, vLLM adapter
+├── infrastructure/  # AWS CDK stack
+├── monitoring/      # worker health monitoring
+├── dashboard.py     # Streamlit metrics dashboard
+└── demo.py          # in-process demonstration wiring
+
+tests/
+├── unit/            # currently verified automated suite
+└── integration/     # older standalone suite requiring repair
+```
+
+## Near-term hardening plan
+
+1. Repair the GitHub Actions workflow and require a green pull-request check.
+2. Complete the `air_gapped_rag` to `ai_inference` rename in every entry point and deployment artifact.
+3. Add a regression test for interactive demo startup and the submit-to-completion path.
+4. Repair or retire the older integration tests and make full test discovery safe.
+5. Align Black, isort, flake8, and mypy configuration and bring the quality gate to green.
+6. Validate CDK synthesis for development, staging, and production configurations.
+7. Add deployment evidence or keep AWS resources explicitly labeled as unvalidated infrastructure definitions.
+
+Longer-term enhancements include server-sent event streaming, stronger workload identity, faithful reconciliation replay, production priority queues, live GPU inventory, multi-region recovery, and load-test evidence.
 
 ## What this project demonstrates
 
-- Model serving architecture and control planes
-- Async execution paths with durable queueing
-- Routing and scheduling tradeoffs for constrained environments
-- GPU capacity management as a first-class platform concern
-- End-to-end request lifecycle with observable state
-- Automated failure recovery with configurable modes
-- Structured observability (JSON logs, per-component log groups, cross-request tracing)
-- Secure environment constraints (KMS, VPC isolation, kill switches)
-- Operationally grounded AI system design
+- Designing an inference control plane rather than wrapping a model API
+- Separating policy from infrastructure and external integrations
+- Reasoning about capacity, fairness, failure, and recovery
+- Building deterministic decisions that operators can inspect
+- Designing testable seams around AWS services and model runtimes
+- Documenting the difference between implemented code, locally verified behavior, and production evidence
