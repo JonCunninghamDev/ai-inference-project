@@ -22,8 +22,5 @@ else
     "${script_dir}/install_dependencies.sh"
 fi
 
-echo "Starting the local demo..."
-echo "  Guided walkthrough: http://127.0.0.1:8080/"
-echo "  Interactive Swagger: http://127.0.0.1:8080/docs"
-echo "  Health endpoint:     http://127.0.0.1:8080/health"
+echo "Starting the Secure AI Inference demo..."
 exec uv run --no-sync python -m ai_inference.demo "$@"
