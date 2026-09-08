@@ -32,17 +32,33 @@ def build_demo_client() -> TestClient:
     return TestClient(app)
 
 
-def test_demo_home_guides_user_to_real_api_and_swagger():
+def test_demo_home_leads_with_nontechnical_guided_experience():
     client = build_demo_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Secure AI inference, visible end to end." in response.text
+    assert "See how a production-style AI request moves safely from request to result." in response.text
+    assert "Start guided demo" in response.text
+    assert "What happens to one AI request" in response.text
+    assert "Request accepted" in response.text
+    assert "Model chosen" in response.text
+    assert "Compute checked" in response.text
+    assert "Decisions recorded" in response.text
+    assert "What you just saw" in response.text
+
+
+def test_demo_home_keeps_engineering_tools_available_as_secondary_details():
+    client = build_demo_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "For engineers" in response.text
     assert 'href="/docs"' in response.text
-    assert "POST /v1/inference" in response.text
-    assert "Priority queue" in response.text
-    assert "Audit trail" in response.text
+    assert 'href="/openapi.json"' in response.text
+    assert 'href="/health"' in response.text
+    assert "Show technical activity" in response.text
 
 
 def test_openapi_groups_operations_and_includes_demo_request_example():
