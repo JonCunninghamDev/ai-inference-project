@@ -119,25 +119,67 @@ These definitions demonstrate infrastructure intent and build on a previously su
 | AWS-backed adapters | SQS, DynamoDB, CloudWatch, SNS, Bedrock, ECS, and ASG boundaries | Implemented; an earlier service revision was deployed successfully, while the current revision awaits revalidation |
 | vLLM adapter | OpenAI-compatible private model endpoint | Implemented and tested with mocked HTTP/client behavior; current performance evidence is not included |
 
-## Local setup
+## Install and test locally
 
 Requirements:
 
+- Git
 - Python 3.12
 - [`uv`](https://docs.astral.sh/uv/)
 - Optional: [`mise`](https://mise.jdx.dev/) for task aliases
 
-Install the development and test dependencies:
+Clone the repository and enter the project directory:
+
+```bash
+git clone https://github.com/JonCunninghamDev/ai-inference-project.git
+cd ai-inference-project
+```
+
+Install the application and its runtime dependencies. `uv` creates and manages the project virtual environment automatically:
+
+```bash
+uv sync
+```
+
+Verify that the package imports successfully:
+
+```bash
+uv run python -c "import ai_inference; print('ai_inference installed successfully')"
+```
+
+Expected output:
+
+```text
+ai_inference installed successfully
+```
+
+### Run all unit tests
+
+Install the test dependencies:
+
+```bash
+uv sync --extra test
+```
+
+Run the complete unit suite:
+
+```bash
+uv run pytest tests/unit -q
+```
+
+Expected result at the current commit:
+
+```text
+238 passed
+```
+
+To install the formatting, linting, type-checking, and test tools together instead:
 
 ```bash
 uv sync --extra dev --extra test
 ```
 
-Run the currently verified suite:
-
-```bash
-uv run pytest tests/unit -q
-```
+### Generate a coverage report
 
 Generate the locally verified coverage report:
 
@@ -145,10 +187,9 @@ Generate the locally verified coverage report:
 uv run pytest tests/unit -q --cov=ai_inference --cov-report=term
 ```
 
-Expected result at the current commit:
+Expected aggregate result at the current commit:
 
 ```text
-238 passed
 TOTAL 2257 statements, 545 missed, 76% coverage
 ```
 
