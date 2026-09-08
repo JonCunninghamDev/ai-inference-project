@@ -25,6 +25,7 @@ from ai_inference.core.priority_queue import PriorityInferenceQueue
 from ai_inference.core.reconciliation import ReconciliationConfig, ReconciliationEngine
 from ai_inference.core.reconciliation_scheduler import ReconciliationScheduler
 from ai_inference.core.result_store import InferenceResult, InMemoryResultStore, RequestStatus
+from ai_inference.demo_ui import attach_demo_ui
 from ai_inference.gateway.api import GatewaySettings, create_app
 from ai_inference.inference.batching import BatchCandidate, BatchingPolicy, DynamicBatcher
 from ai_inference.inference.circuit_breaker import CircuitBreaker, CircuitBreakerPolicy
@@ -226,10 +227,10 @@ def main() -> None:
     print("\n╔══════════════════════════════════════════════════════╗")
     print("║   Secure Inference Platform — Demo Mode             ║")
     print("╠══════════════════════════════════════════════════════╣")
-    print("║  Gateway:  http://localhost:8080                     ║")
-    print("║  Health:   http://localhost:8080/health              ║")
-    print("║  Submit:   POST /v1/inference                       ║")
-    print("║  Poll:     GET  /v1/inference/{request_id}          ║")
+    print("║  Walkthrough: http://localhost:8080/                ║")
+    print("║  Swagger:     http://localhost:8080/docs            ║")
+    print("║  Health:      http://localhost:8080/health          ║")
+    print("║  OpenAPI:     http://localhost:8080/openapi.json    ║")
     print("╚══════════════════════════════════════════════════════╝\n")
 
     # Shared state
@@ -249,6 +250,7 @@ def main() -> None:
         large_context_tokens=32768,
     )
     app = create_app(settings=settings, publisher=publisher, result_store=result_store, metrics=metrics, audit_log=audit)
+    attach_demo_ui(app)
 
     # Worker thread
     worker = DemoWorker(result_store, metrics, audit)
