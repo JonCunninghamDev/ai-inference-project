@@ -169,7 +169,7 @@ Run the current static security check:
 uv run bandit -r src -ll
 ```
 
-At the time of this documentation update, the unit command passes 238 tests and Bandit reports no medium- or high-severity findings. Those results are a narrow baseline, not proof of production security. The repository does not currently include a passing full integration suite, dynamic application security testing, infrastructure policy checks, a penetration-test report, or a formal security review.
+At the time of this documentation update, the unit command passes 240 tests and Bandit reports no medium- or high-severity findings. Those results are a narrow baseline, not proof of production security. The repository does not currently include a passing full integration suite, dynamic application security testing, infrastructure policy checks, a penetration-test report, or a formal security review.
 
 ## Production-readiness checklist
 

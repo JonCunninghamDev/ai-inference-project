@@ -12,8 +12,15 @@ if ! command -v uv >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "Ensuring runtime dependencies are installed..."
-uv sync --extra dev --extra test
+dependency_check='import ai_inference.demo'
+
+if uv run --no-sync python -c "${dependency_check}" >/dev/null 2>&1; then
+    echo "Demo dependencies are ready; skipping installation."
+else
+    echo "Demo dependencies are missing. Running the one-time installer..."
+    echo "This can briefly use significant CPU, disk, and memory on older systems."
+    "${script_dir}/install_dependencies.sh"
+fi
 
 echo "Starting the local demo at http://127.0.0.1:8080..."
-uv run python -m ai_inference.demo "$@"
+exec uv run --no-sync python -m ai_inference.demo "$@"
