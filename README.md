@@ -14,7 +14,7 @@ Status as of September 8, 2026:
 | --- | --- |
 | Core routing, batching, scheduling, resilience, and tenant policies | Implemented and unit tested |
 | In-process gateway-to-worker lifecycle | Implemented and exercised by the unit suite |
-| Unit suite | 238 passing tests |
+| Unit suite | 240 passing tests |
 | Statement coverage | 76% across `src/ai_inference` |
 | Security scan | No medium- or high-severity Bandit findings |
 | Local demo | Startup defect corrected in the development worktree; health, submission, processing, and result polling verified locally |
@@ -77,14 +77,14 @@ The test runner ensures the test dependencies are installed and executes every t
 Expected result at the current commit:
 
 ```text
-238 passed
+240 passed
 ```
 
 ### Run the local demo
 
 [![Run local demo](https://img.shields.io/badge/3-Run_local_demo-8250df?style=for-the-badge)](./scripts/run_demo.sh)
 
-The demo runner ensures the runtime dependencies are installed and starts the in-process gateway and worker:
+The demo runner performs a lightweight dependency check and starts the in-process gateway and worker:
 
 ```bash
 ./scripts/run_demo.sh
@@ -98,6 +98,8 @@ curl -s http://127.0.0.1:8080/health
 
 The gateway runs at `http://127.0.0.1:8080`. Stop it with `Ctrl+C`.
 
+When the environment is already ready, the launcher skips installation entirely. If dependencies are missing, it explains that setup may briefly use significant CPU, disk, and memory on older systems before running the one-time installer.
+
 > GitHub does not allow a README button to execute code on a visitor's computer. Each button above opens the corresponding executable script for inspection. The command directly beneath it runs that script locally, and GitHub provides a copy button on each command block.
 
 ### Manual commands and task aliases
@@ -107,7 +109,7 @@ The equivalent direct commands are:
 ```bash
 uv sync --extra dev --extra test
 uv run pytest tests/unit -q
-uv run python -m ai_inference.demo
+uv run --no-sync python -m ai_inference.demo
 ```
 
 Generate a coverage report with:
