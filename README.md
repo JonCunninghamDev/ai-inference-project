@@ -38,6 +38,100 @@ AI prototypes often assume constant network access, abundant compute, and a dire
 
 This repository explores those questions through explicit policies and replaceable interfaces. It favors observable decisions over opaque automation.
 
+## Install, test, and run
+
+Requirements:
+
+- Git
+- Python 3.12
+- [`uv`](https://docs.astral.sh/uv/)
+- Bash-compatible terminal (Linux, macOS, or WSL)
+
+Clone the repository and enter the project directory:
+
+```bash
+git clone https://github.com/JonCunninghamDev/ai-inference-project.git
+cd ai-inference-project
+```
+
+### Install dependencies
+
+[![Install dependencies](https://img.shields.io/badge/1-Install_dependencies-2ea44f?style=for-the-badge)](./scripts/install_dependencies.sh)
+
+The installer creates the project environment and installs runtime, development, and test dependencies:
+
+```bash
+./scripts/install_dependencies.sh
+```
+
+### Run all unit tests
+
+[![Run unit tests](https://img.shields.io/badge/2-Run_unit_tests-0969da?style=for-the-badge)](./scripts/run_unit_tests.sh)
+
+The test runner ensures the test dependencies are installed and executes every test under `tests/unit`:
+
+```bash
+./scripts/run_unit_tests.sh
+```
+
+Expected result at the current commit:
+
+```text
+238 passed
+```
+
+### Run the local demo
+
+[![Run local demo](https://img.shields.io/badge/3-Run_local_demo-8250df?style=for-the-badge)](./scripts/run_demo.sh)
+
+The demo runner ensures the runtime dependencies are installed and starts the in-process gateway and worker:
+
+```bash
+./scripts/run_demo.sh
+```
+
+Then use another terminal to inspect the service:
+
+```bash
+curl -s http://127.0.0.1:8080/health
+```
+
+The gateway runs at `http://127.0.0.1:8080`. Stop it with `Ctrl+C`.
+
+> GitHub does not allow a README button to execute code on a visitor's computer. Each button above opens the corresponding executable script for inspection. The command directly beneath it runs that script locally, and GitHub provides a copy button on each command block.
+
+### Manual commands and task aliases
+
+The equivalent direct commands are:
+
+```bash
+uv sync --extra dev --extra test
+uv run pytest tests/unit -q
+uv run python -m ai_inference.demo
+```
+
+Generate a coverage report with:
+
+```bash
+uv run pytest tests/unit -q --cov=ai_inference --cov-report=term
+```
+
+Expected aggregate result at the current commit:
+
+```text
+TOTAL 2257 statements, 545 missed, 76% coverage
+```
+
+If [`mise`](https://mise.jdx.dev/) is installed, the repository also provides these aliases:
+
+| Command | Purpose | Current state |
+| --- | --- | --- |
+| `mise run install` | Install development and test dependencies | Available |
+| `mise run test` | Run `tests/unit` | Passing locally |
+| `mise run lint` | Run Black and isort checks | Currently failing |
+| `mise run demo` | Start the in-process platform | Passing locally |
+| `mise run dashboard` | Start the Streamlit metrics dashboard | Expects a metrics JSONL file |
+
 ## Architecture
 
 ```mermaid
@@ -118,90 +212,6 @@ These definitions demonstrate infrastructure intent and build on a previously su
 | In-process lifecycle | Gateway, queue, worker, result store, audit, and metrics without AWS | Exercised by tests and a local submit-to-completion smoke test after the initialization fix |
 | AWS-backed adapters | SQS, DynamoDB, CloudWatch, SNS, Bedrock, ECS, and ASG boundaries | Implemented; an earlier service revision was deployed successfully, while the current revision awaits revalidation |
 | vLLM adapter | OpenAI-compatible private model endpoint | Implemented and tested with mocked HTTP/client behavior; current performance evidence is not included |
-
-## Install and test locally
-
-Requirements:
-
-- Git
-- Python 3.12
-- [`uv`](https://docs.astral.sh/uv/)
-- Optional: [`mise`](https://mise.jdx.dev/) for task aliases
-
-Clone the repository and enter the project directory:
-
-```bash
-git clone https://github.com/JonCunninghamDev/ai-inference-project.git
-cd ai-inference-project
-```
-
-Install the application and its runtime dependencies. `uv` creates and manages the project virtual environment automatically:
-
-```bash
-uv sync
-```
-
-Verify that the package imports successfully:
-
-```bash
-uv run python -c "import ai_inference; print('ai_inference installed successfully')"
-```
-
-Expected output:
-
-```text
-ai_inference installed successfully
-```
-
-### Run all unit tests
-
-Install the test dependencies:
-
-```bash
-uv sync --extra test
-```
-
-Run the complete unit suite:
-
-```bash
-uv run pytest tests/unit -q
-```
-
-Expected result at the current commit:
-
-```text
-238 passed
-```
-
-To install the formatting, linting, type-checking, and test tools together instead:
-
-```bash
-uv sync --extra dev --extra test
-```
-
-### Generate a coverage report
-
-Generate the locally verified coverage report:
-
-```bash
-uv run pytest tests/unit -q --cov=ai_inference --cov-report=term
-```
-
-Expected aggregate result at the current commit:
-
-```text
-TOTAL 2257 statements, 545 missed, 76% coverage
-```
-
-The repository also defines these `mise` tasks:
-
-| Command | Intended purpose | Current state |
-| --- | --- | --- |
-| `mise run install` | Install development and test dependencies | Available |
-| `mise run test` | Run `tests/unit` | Passing locally |
-| `mise run lint` | Run Black and isort checks | Currently failing |
-| `mise run demo` | Start the in-process platform | Verified locally after the development initialization-order fix |
-| `mise run dashboard` | Start the Streamlit metrics dashboard | Implemented; expects a metrics JSONL file |
 
 ## Development workflow
 
