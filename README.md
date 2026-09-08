@@ -278,21 +278,24 @@ Reconciliation can inspect or heal stale requests before notifying an operator. 
 
 The project includes security-oriented controls, but the word "secure" describes design intent rather than a certification or completed security assessment.
 
+See [Security design and current boundaries](docs/security.md) for the trust boundaries, data-handling behavior, threat summary, infrastructure gaps, and production-readiness checklist.
+
 Implemented controls include:
 
-- Gateway authentication and tenant derivation
+- An injectable API-key authentication provider and auth-derived tenant identity
 - Per-tenant resource policies
 - KMS encryption in the AWS infrastructure definitions
 - Isolated-subnet infrastructure design
 - Least-privilege-oriented IAM grants
-- Append-only audit implementations
+- In-memory and append-oriented JSONL audit implementations
 - A runtime kill switch
 - Failure containment through circuit breaking and admission control
 
 Current boundaries include:
 
-- Authentication is API-key based; OAuth, workload identity, and mutual TLS are not implemented
-- Demo mode intentionally uses a no-auth provider
+- The gateway defaults to a no-auth provider unless authentication is explicitly injected; demo mode is intentionally unauthenticated
+- API-key secret storage, rotation, and revocation are not implemented; OAuth, workload identity, and mutual TLS are also absent
+- The CDK stack contains a placeholder VPN pre-shared key and incomplete private endpoint coverage, so it must not be deployed unchanged
 - The repository has no formal threat model, penetration-test evidence, or compliance attestation
 - An earlier AWS deployment succeeded, but the current revision has not been revalidated after the package rename and later module additions
 - Bedrock failure analysis would require an explicit redaction and data-handling policy before use with sensitive records

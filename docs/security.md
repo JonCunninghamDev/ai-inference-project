@@ -1,1 +1,192 @@
-# Air-Gapped RAG Security Guide\n\nThis document outlines the security architecture, controls, and procedures for the Air-Gapped RAG system.\n\n## Security Architecture Overview\n\nThe Air-Gapped RAG system implements a defense-in-depth security model with multiple layers of protection:\n\n```\n┌─────────────────────────────────────────────────────────────┐\n│ Internet                                                    │\n└─────────────────────┬───────────────────────────────────────┘\n                      │ Encrypted IPsec VPN\n┌─────────────────────▼───────────────────────────────────────┐\n│ AWS Cloud (Isolated VPC)                                    │\n│ ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │\n│ │ VPC         │  │ KMS         │  │ CloudTrail          │   │\n│ │ Endpoints   │  │ Encryption  │  │ Audit Logging       │   │\n│ └─────────────┘  └─────────────┘  └─────────────────────┘   │\n│ ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │\n│ │ SQS         │  │ SSM         │  │ CloudWatch          │   │\n│ │ (Encrypted) │  │ Parameters  │  │ Monitoring          │   │\n│ └─────────────┘  └─────────────┘  └─────────────────────┘   │\n└─────────────────────┬───────────────────────────────────────┘\n                      │ VPN Tunnel\n┌─────────────────────▼───────────────────────────────────────┐\n│ Air-Gapped Environment                                      │\n│ ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │\n│ │ Worker      │  │ vLLM        │  │ Local Storage       │   │\n│ │ Process     │  │ Server      │  │ (Encrypted)         │   │\n│ └─────────────┘  └─────────────┘  └─────────────────────┘   │\n└─────────────────────────────────────────────────────────────┘\n```\n\n## Security Controls\n\n### 1. Network Security\n\n#### Air-Gap Implementation\n- **Physical Isolation**: Worker environment has no direct internet access\n- **VPN-Only Communication**: All AWS communication through encrypted IPsec tunnel\n- **Private VPC**: Isolated VPC with no internet gateway\n- **VPC Endpoints**: Private connectivity to AWS services via PrivateLink\n\n#### Network Access Controls\n```bash\n# Security Group Rules (Restrictive)\nIngress:\n- Port 443 (HTTPS) from VPC CIDR only\n- Port 500/4500 (IPsec) from home IP only\n\nEgress:\n- Port 443 (HTTPS) to VPC endpoints only\n- No internet access\n```\n\n#### VPN Security\n- **Encryption**: AES-256 with SHA-256 authentication\n- **Key Management**: Dynamic pre-shared keys stored in SSM SecureString\n- **Key Rotation**: Automated rotation every 30-90 days\n- **Dead Peer Detection**: Automatic tunnel recovery\n\n### 2. Data Protection\n\n#### Encryption at Rest\n- **SQS Messages**: KMS encryption with customer-managed keys\n- **CloudWatch Logs**: Encrypted with AWS managed keys\n- **SSM Parameters**: SecureString type with KMS encryption\n- **Local Storage**: LUKS encryption for sensitive data\n\n#### Encryption in Transit\n- **VPN Tunnel**: IPsec with AES-256 encryption\n- **AWS API Calls**: TLS 1.2+ for all communications\n- **Internal Communication**: Local connections over localhost only\n\n#### Data Classification\n```\nCLASSIFICATION LEVELS:\n- PUBLIC: System logs, metrics (anonymized)\n- INTERNAL: Configuration parameters, system status\n- CONFIDENTIAL: Processing queues, inference requests\n- RESTRICTED: Authentication keys, encryption keys\n```\n\n### 3. Identity and Access Management\n\n#### AWS IAM Security\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"sqs:ReceiveMessage\",\n        \"sqs:DeleteMessage\",\n        \"sqs:GetQueueAttributes\"\n      ],\n      \"Resource\": \"arn:aws:sqs:*:*:ai-inference-queue-*\",\n      \"Condition\": {\n        \"StringEquals\": {\n          \"aws:RequestedRegion\": \"us-east-1\"\n        }\n      }\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"ssm:GetParameter\"\n      ],\n      \"Resource\": \"arn:aws:ssm:*:*:parameter/ai-inference/config/*\"\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"logs:CreateLogStream\",\n        \"logs:PutLogEvents\"\n      ],\n      \"Resource\": \"arn:aws:logs:*:*:log-group:/ai-inference/worker-*\"\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"cloudwatch:PutMetricData\"\n      ],\n      \"Resource\": \"*\",\n      \"Condition\": {\n        \"StringEquals\": {\n          \"cloudwatch:namespace\": \"AirGappedRAG\"\n        }\n      }\n    }\n  ]\n}\n```\n\n#### Principle of Least Privilege\n- **Worker Role**: Minimal permissions for SQS, SSM, CloudWatch\n- **No Admin Access**: No administrative permissions granted\n- **Resource Restrictions**: Access limited to specific resources\n- **Condition-Based Access**: Geographic and namespace restrictions\n\n#### Multi-Factor Authentication\n- **AWS Console**: MFA required for all human access\n- **API Access**: Temporary credentials with session tokens\n- **Emergency Access**: Break-glass procedures with audit trail\n\n### 4. System Hardening\n\n#### Operating System Security\n```bash\n# System hardening checklist\n\n# 1. User Management\nsudo useradd -r -s /bin/false -d /opt/ai-inference rag-worker\nsudo usermod -L rag-worker  # Lock password\n\n# 2. File Permissions\nsudo chmod 750 /opt/ai-inference\nsudo chmod 640 /opt/ai-inference/config/*\nsudo chmod 600 /etc/ipsec.secrets\n\n# 3. Service Isolation\n# SystemD security settings in service files:\n# NoNewPrivileges=true\n# PrivateTmp=true\n# ProtectSystem=strict\n# ProtectHome=true\n\n# 4. Network Security\nsudo ufw enable\nsudo ufw default deny incoming\nsudo ufw default deny outgoing\nsudo ufw allow out 500/udp\nsudo ufw allow out 4500/udp\nsudo ufw allow out 443/tcp\n\n# 5. Audit Logging\nsudo auditctl -w /opt/ai-inference -p wa -k rag-access\nsudo auditctl -w /etc/ipsec.conf -p wa -k vpn-config\n```\n\n#### Container Security (if using Docker)\n```dockerfile\n# Security-focused Dockerfile\nFROM python:3.12-slim\n\n# Create non-root user\nRUN useradd -r -u 1001 -g users rag-worker\n\n# Security updates\nRUN apt-get update && apt-get upgrade -y && \\\n    apt-get clean && rm -rf /var/lib/apt/lists/*\n\n# Set security options\nUSER rag-worker\nWORKDIR /app\n\n# Read-only filesystem\nVOLUME [\"/tmp\"]\n```\n\n### 5. Monitoring and Alerting\n\n#### Security Monitoring\n```bash\n# Security events to monitor\n\n# 1. Authentication Events\naws logs filter-log-events \\\n    --log-group-name /aws/cloudtrail \\\n    --filter-pattern \"{ $.eventName = AssumeRole && $.errorCode EXISTS }\"\n\n# 2. VPN Connection Events\nsudo journalctl -u strongswan | grep -E \"CHILD_SA|IKE_SA\"\n\n# 3. Failed Access Attempts\naws logs filter-log-events \\\n    --log-group-name /ai-inference/worker-Prod \\\n    --filter-pattern \"ERROR\"\n\n# 4. Configuration Changes\naws logs filter-log-events \\\n    --log-group-name /aws/cloudtrail \\\n    --filter-pattern \"{ $.eventSource = ssm.amazonaws.com && $.eventName = PutParameter }\"\n```\n\n#### Automated Alerting\n- **Failed Authentication**: Immediate alert on 3+ failed attempts\n- **VPN Disconnection**: Alert within 2 minutes of tunnel failure\n- **Unusual Activity**: ML-based anomaly detection\n- **Configuration Changes**: Real-time alerts on parameter modifications\n\n### 6. Incident Response\n\n#### Security Incident Classification\n```\nSEVERITY LEVELS:\n- P0 (Critical): Data breach, system compromise\n- P1 (High): Unauthorized access attempts, service disruption\n- P2 (Medium): Policy violations, suspicious activity\n- P3 (Low): Security warnings, compliance issues\n```\n\n#### Incident Response Procedures\n\n##### P0 - Critical Security Incident\n1. **Immediate Actions** (0-15 minutes):\n   ```bash\n   # Emergency shutdown\n   aws ssm put-parameter \\\n       --name \"/ai-inference/config/Prod/enable-processing\" \\\n       --value \"false\" \\\n       --type String \\\n       --overwrite\n   \n   # Isolate system\n   sudo systemctl stop rag-worker\n   sudo ipsec stop\n   ```\n\n2. **Assessment** (15-60 minutes):\n   - Determine scope of compromise\n   - Identify affected systems and data\n   - Preserve evidence for forensic analysis\n\n3. **Containment** (1-4 hours):\n   - Isolate affected systems\n   - Revoke compromised credentials\n   - Apply emergency patches\n\n4. **Recovery** (4-24 hours):\n   - Restore from clean backups\n   - Rebuild compromised systems\n   - Implement additional controls\n\n##### P1 - High Priority Incident\n1. **Investigation** (0-30 minutes):\n   ```bash\n   # Check recent access\n   aws cloudtrail lookup-events \\\n       --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRole \\\n       --start-time $(date -d '1 hour ago' --iso-8601)\n   \n   # Check system logs\n   sudo journalctl -u rag-worker --since \"1 hour ago\" | grep -i error\n   ```\n\n2. **Response** (30 minutes - 2 hours):\n   - Implement temporary mitigations\n   - Increase monitoring sensitivity\n   - Notify stakeholders\n\n#### Forensic Procedures\n```bash\n# Evidence collection\n\n# 1. System State\nsudo dd if=/dev/sda of=/forensics/system-image.dd bs=4M\nsudo tar -czf /forensics/logs-$(date +%Y%m%d).tar.gz /var/log\n\n# 2. Memory Dump\nsudo dd if=/dev/mem of=/forensics/memory-dump.dd\n\n# 3. Network Capture\nsudo tcpdump -i any -w /forensics/network-$(date +%Y%m%d).pcap\n\n# 4. AWS Logs\naws logs export-task \\\n    --log-group-name /ai-inference/worker-Prod \\\n    --from $(date -d '24 hours ago' +%s)000 \\\n    --to $(date +%s)000 \\\n    --destination s3://forensics-bucket/$(date +%Y%m%d)/\n```\n\n### 7. Compliance and Auditing\n\n#### Audit Requirements\n- **Access Logging**: All system and data access logged\n- **Change Management**: All configuration changes tracked\n- **Data Retention**: Logs retained for minimum 1 year\n- **Regular Reviews**: Monthly access reviews, quarterly security assessments\n\n#### Compliance Frameworks\n\n##### SOC 2 Type II\n- **Security**: Multi-layered security controls\n- **Availability**: 99.9% uptime with monitoring\n- **Processing Integrity**: Data validation and error handling\n- **Confidentiality**: Encryption and access controls\n- **Privacy**: Data minimization and retention policies\n\n##### NIST Cybersecurity Framework\n- **Identify**: Asset inventory and risk assessment\n- **Protect**: Access controls and data protection\n- **Detect**: Continuous monitoring and alerting\n- **Respond**: Incident response procedures\n- **Recover**: Backup and recovery capabilities\n\n#### Audit Procedures\n```bash\n# Monthly audit checklist\n\n# 1. Access Review\naws iam get-account-authorization-details > access-review-$(date +%Y%m).json\n\n# 2. Configuration Audit\naws ssm describe-parameters \\\n    --parameter-filters \"Key=Name,Values=/ai-inference/\" > config-audit-$(date +%Y%m).json\n\n# 3. Security Group Review\naws ec2 describe-security-groups \\\n    --group-names \"*rag*\" > sg-audit-$(date +%Y%m).json\n\n# 4. VPN Status\naws ec2 describe-vpn-connections > vpn-audit-$(date +%Y%m).json\n\n# 5. Encryption Status\naws kms describe-key --key-id alias/ai-inference > kms-audit-$(date +%Y%m).json\n```\n\n### 8. Security Testing\n\n#### Vulnerability Assessment\n```bash\n# Automated security scanning\n\n# 1. Network Scanning\nnmap -sS -O -A target-system\n\n# 2. Vulnerability Scanning\nnessus-cli scan --target target-system --policy \"Air-Gapped RAG Policy\"\n\n# 3. Code Security Scanning\nbandit -r src/ -f json -o security-scan.json\nsemgrep --config=auto src/\n\n# 4. Container Scanning (if applicable)\ndocker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\\n    aquasec/trivy image ai-inference:latest\n```\n\n#### Penetration Testing\n- **Quarterly External Testing**: Third-party security assessment\n- **Annual Red Team Exercise**: Simulated attack scenarios\n- **Continuous Internal Testing**: Automated security validation\n\n#### Security Metrics\n```bash\n# Key security metrics to track\n\n# 1. Mean Time to Detection (MTTD)\n# 2. Mean Time to Response (MTTR)\n# 3. Number of security incidents\n# 4. Vulnerability remediation time\n# 5. Compliance score\n# 6. Security training completion rate\n```\n\n### 9. Security Procedures\n\n#### Key Rotation\n```bash\n# VPN Key Rotation (Monthly for Prod)\n\n# 1. Generate new key\nNEW_KEY=$(openssl rand -base64 32)\n\n# 2. Update SSM parameter\naws ssm put-parameter \\\n    --name \"/ai-inference/vpn/Prod/pre-shared-key\" \\\n    --value \"$NEW_KEY\" \\\n    --type SecureString \\\n    --overwrite\n\n# 3. Update VPN configuration\nsudo ./scripts/update_vpn_config.sh prod\n\n# 4. Restart VPN\nsudo ipsec restart\n\n# 5. Verify connectivity\nping -c 3 10.2.0.1\n```\n\n#### Access Reviews\n```bash\n# Quarterly access review\n\n# 1. List all IAM entities\naws iam list-users > users-$(date +%Y%m%d).json\naws iam list-roles > roles-$(date +%Y%m%d).json\n\n# 2. Review permissions\nfor user in $(aws iam list-users --query 'Users[].UserName' --output text); do\n    aws iam list-attached-user-policies --user-name $user\n    aws iam list-user-policies --user-name $user\ndone\n\n# 3. Check last access\naws iam generate-service-last-accessed-details \\\n    --arn arn:aws:iam::ACCOUNT:role/RAG-Worker-Role-Prod\n```\n\n#### Backup Security\n```bash\n# Secure backup procedures\n\n# 1. Configuration backup\naws ssm get-parameters-by-path \\\n    --path \"/ai-inference/config/Prod\" \\\n    --recursive \\\n    --with-decryption > config-backup-$(date +%Y%m%d).json.enc\n\n# 2. Encrypt backup\ngpg --cipher-algo AES256 --compress-algo 1 --s2k-mode 3 \\\n    --s2k-digest-algo SHA512 --s2k-count 65536 \\\n    --symmetric config-backup-$(date +%Y%m%d).json\n\n# 3. Store securely\naws s3 cp config-backup-$(date +%Y%m%d).json.enc.gpg \\\n    s3://secure-backup-bucket/ai-inference/ \\\n    --server-side-encryption aws:kms \\\n    --ssm-kms-key-id alias/backup-key\n```\n\n### 10. Security Training\n\n#### Required Training Topics\n- **Security Awareness**: Phishing, social engineering\n- **Data Protection**: Classification, handling procedures\n- **Incident Response**: Reporting procedures, escalation\n- **Access Management**: Principle of least privilege\n- **Secure Development**: OWASP Top 10, secure coding\n\n#### Training Schedule\n- **Initial Training**: All team members within 30 days\n- **Annual Refresher**: Mandatory yearly update\n- **Incident-Based**: Additional training after security incidents\n- **Role-Specific**: Specialized training for security roles\n\nThis security guide provides comprehensive coverage of security controls, procedures, and best practices for the Air-Gapped RAG system. Regular reviews and updates ensure continued effectiveness against evolving threats.
+# Security design and current boundaries
+
+This document describes the security behavior that is visible in the repository today. The project is a reference implementation, not a certified product or a completed security assessment. An earlier revision was deployed successfully, but the current revision has not been revalidated in AWS after the package rename and later module additions.
+
+## Security posture at a glance
+
+| Area | Current state |
+| --- | --- |
+| Gateway authentication | An API-key provider is implemented, but the application defaults to no authentication unless a provider is injected. Demo mode is intentionally unauthenticated. |
+| Tenant controls | Authenticated identities can map to tenant IDs. In-process rate and concurrency limits are implemented per tenant. |
+| Queue and result encryption | The CDK stack defines KMS encryption for SQS and DynamoDB, including KMS key rotation. |
+| Network isolation | The CDK stack defines isolated subnets, selected VPC endpoints, and a site-to-site VPN. The endpoint set is currently incomplete for all worker dependencies. |
+| Authorization | The worker role receives resource grants plus the AWS-managed `CloudWatchAgentServerPolicy`; the latter should be replaced or constrained before production use. |
+| Audit trail | In-memory and JSONL audit sinks record lifecycle events. The JSONL file is not tamper-evident or protected from host-level modification. |
+| Resilience controls | Admission control, request TTL, circuit breaking, a processing kill switch, a DLQ, alarms, and reconciliation policies are implemented. |
+| Compliance | No compliance attestation, penetration-test report, or formal availability commitment is included in this repository. |
+
+## Scope and trust boundaries
+
+The logical request path is asynchronous:
+
+```mermaid
+flowchart LR
+    C[Client] --> G[Gateway]
+    G --> Q[Queue]
+    Q --> W[Worker]
+    W --> M[vLLM endpoint]
+    G <--> R[Result store]
+    W <--> R
+```
+
+This diagram shows software relationships, not a fully validated deployment topology. In particular, the CDK stack defines network, queue, result-store, monitoring, and worker-role resources, but it does not provision the gateway or worker compute.
+
+The main trust boundaries are:
+
+- The client-to-gateway boundary, where caller identity must be established.
+- The gateway-to-queue boundary, where prompt, context, metadata, and routing information are serialized.
+- The queue-to-worker boundary, where only expected message shapes should be accepted.
+- The worker-to-model boundary, where request content is sent to the configured vLLM-compatible endpoint.
+- The service-to-AWS boundary for SQS, DynamoDB, KMS, SSM, CloudWatch, SNS, ECS, ASG, and optional Bedrock integrations.
+
+## Implemented application controls
+
+### Authentication and tenant identity
+
+[`ApiKeyAuthProvider`](../src/ai_inference/gateway/auth.py) validates a bearer token and maps it to a tenant ID. The gateway prefers this authenticated tenant identity over caller-supplied metadata.
+
+Important limitations:
+
+- [`create_app`](../src/ai_inference/gateway/api.py) falls back to `NoAuthProvider` when no provider is supplied. This is convenient for local use but is not a safe production default.
+- Keys are supplied as an in-memory dictionary. Secret storage, hashing, expiration, rotation, revocation, and audit workflows are not implemented.
+- OAuth, workload identity, and mutual TLS are not implemented.
+- Tenant rate and concurrency state is local to one process; it is not coordinated across gateway replicas.
+
+Any externally reachable deployment must inject a real authentication provider and fail startup if authentication configuration is absent.
+
+### Admission, isolation, and failure containment
+
+The application includes:
+
+- Global admission control based on pending and processing load.
+- Per-tenant sliding-window rate limits and concurrency limits.
+- Auth-derived tenant identity when authentication is enabled.
+- Request TTL checks before inference.
+- A circuit breaker around the downstream model service.
+- Deterministic routing and conservative batching policies.
+- A worker processing switch read from SSM. If the switch cannot be read, the worker returns `False` and stops processing new work.
+- Dead-letter queue and reconciliation boundaries for failed or stale work.
+
+These controls reduce overload and failure propagation. They are not a substitute for authenticated ingress, distributed quotas, network policy, or resource-level authorization.
+
+### Audit and observability
+
+The gateway and worker record request lifecycle events without intentionally placing the original prompt or context in audit-event details. Structured application logs include request identifiers and operational metadata.
+
+Two audit implementations are available:
+
+- `InMemoryAuditLog` for tests and local demonstrations.
+- `JsonlAuditLog` for appending events to a local file.
+
+The JSONL sink uses append mode at the application layer only. It does not provide cryptographic integrity, access control, file locking, retention enforcement, secure rotation, or protection from deletion. It must not be described as an immutable compliance log without additional controls.
+
+Errors can contain downstream or infrastructure details. Log destinations, retention, access, and redaction rules must be reviewed before processing sensitive data.
+
+## Data handling
+
+An inference request can contain:
+
+- `prompt` and optional `context` content.
+- Caller metadata and an event type.
+- A tenant identity, selected model, priority, and routing details.
+- A generated request ID and idempotency hash.
+
+The gateway publishes this data to the queue. The worker sends prompt content to the configured model endpoint and writes request status, output, or error data to the result store. The CDK definitions enable KMS encryption for SQS and DynamoDB, but that infrastructure behavior still requires successful synthesis and deployment validation.
+
+Optional Bedrock failure analysis is disabled by default. When enabled, it sends failure metadata—including request ID, timestamps, model name, and the recorded error—to the configured Bedrock model. It does not include the original prompt or context in the analysis request, but error text may still be sensitive and requires a documented data-handling policy.
+
+The repository does not currently define:
+
+- A data classification or acceptable-use policy.
+- Prompt or result retention requirements.
+- Field-level encryption or application-managed envelope encryption.
+- A deletion workflow for an individual tenant or request.
+- A verified redaction or data-loss-prevention layer.
+
+## AWS infrastructure definitions
+
+[`ai_inference_stack.py`](../src/ai_inference/infrastructure/ai_inference_stack.py) defines the following security-relevant resources:
+
+- A customer-managed KMS key with automatic key rotation.
+- KMS-encrypted inference and dead-letter SQS queues.
+- A KMS-encrypted DynamoDB result table with TTL and point-in-time recovery.
+- Private isolated subnets with no NAT gateway configured by the stack.
+- Interface endpoints for SQS, CloudWatch Logs, and SSM.
+- An endpoint security group that accepts TCP 443 only from the VPC CIDR and disables unrestricted outbound access.
+- Stage-specific CloudWatch log retention and alarms.
+- An SSM processing switch.
+- A worker role with queue, table, key, log, switch, and metric permissions.
+- Site-to-site VPN resource definitions.
+
+These are infrastructure-as-code definitions, not evidence that the controls are active in an account. The current CDK entry point still contains stale imports, so synthesis and deployment must be repaired and tested before relying on the stack.
+
+### Infrastructure issues requiring remediation
+
+The current definitions must not be deployed unchanged to production:
+
+1. The VPN pre-shared key is a hard-coded placeholder. Replace it with a secret-managed value that is not committed to source or exposed in a generated template.
+2. `cdk.json` contains a specific home IP address. Supply environment-specific network values through a protected deployment configuration instead.
+3. Isolated workers need private access to every required AWS API. The stack currently lacks DynamoDB and KMS endpoints, and any optional AWS integrations need corresponding endpoints or an explicitly approved egress path.
+4. The AWS-managed `CloudWatchAgentServerPolicy` is broader than the resource-specific grants used elsewhere. Replace it with a scoped policy based on observed worker requirements.
+5. CloudWatch log groups have retention settings but no customer-managed KMS key in this stack.
+6. The stack does not provision authenticated TLS ingress, WAF protections, compute hardening, CloudTrail, GuardDuty, or centralized security-alert routing.
+7. The site-to-site VPN definition alone does not prove end-to-end isolation, tunnel health, route correctness, or client authorization.
+
+## Threat model summary
+
+This is a working threat summary, not a formal threat model.
+
+| Threat | Existing mitigation | Remaining exposure |
+| --- | --- | --- |
+| Unauthorized request submission | Injectable API-key provider | No-auth is the default; no secret lifecycle or workload identity |
+| Tenant spoofing | Auth-derived tenant takes precedence | Metadata fallback remains when no authenticated tenant is present |
+| Noisy-neighbor exhaustion | Admission, tenant rate, and concurrency limits | State is in-process and not shared across replicas |
+| Queue or result disclosure | KMS-enabled SQS and DynamoDB definitions | Current infrastructure is not synthesis/deployment validated |
+| Downstream model outage | Circuit breaker, retries, TTL, DLQ, reconciliation | Recovery behavior is not validated against a live current deployment |
+| Sensitive data in telemetry | Audit details omit prompt and context | Error strings and other logs lack a verified redaction policy |
+| Audit tampering | Append-oriented JSONL API | Local files are mutable and have no integrity chain |
+| Network bypass or unintended egress | Isolated-subnet design and selected endpoints | Endpoint coverage and deployed routes are not currently validated |
+| Compromised worker credentials | Resource grants for core AWS resources | Broad managed policy remains; no documented credential-response procedure |
+| Dependency or source compromise | Lockfile-based installation and unit tests | Automated SCA, secret scanning, provenance, and signed releases are not established |
+
+## Security verification
+
+Install the development and test dependencies:
+
+```bash
+./scripts/install_dependencies.sh
+```
+
+Run the verified unit suite:
+
+```bash
+./scripts/run_unit_tests.sh
+```
+
+Run the current static security check:
+
+```bash
+uv run bandit -r src -ll
+```
+
+At the time of this documentation update, the unit command passes 238 tests and Bandit reports no medium- or high-severity findings. Those results are a narrow baseline, not proof of production security. The repository does not currently include a passing full integration suite, dynamic application security testing, infrastructure policy checks, a penetration-test report, or a formal security review.
+
+## Production-readiness checklist
+
+Before exposing the service outside a trusted development environment:
+
+- Make authentication mandatory outside demo mode and load credentials from an approved secret store.
+- Remove committed network-specific values and the VPN pre-shared-key placeholder.
+- Repair the CDK entry point, synthesize every environment, review the generated IAM and network policies, and deploy to a disposable test account first.
+- Add all required VPC endpoints or document and restrict each approved egress path.
+- Replace broad managed permissions with scoped policies.
+- Terminate TLS at an authenticated ingress layer and define request-size, timeout, and abuse protections.
+- Define data classification, retention, deletion, redaction, and incident-response procedures.
+- Send security-relevant logs to a protected, access-controlled, integrity-preserving destination.
+- Enable account-level audit and detection services appropriate to the deployment.
+- Add secret scanning, dependency vulnerability scanning, infrastructure policy checks, integration tests, and negative authentication tests to CI.
+- Perform a threat-model review and an independent security assessment before processing sensitive or regulated data.
+
+## Reporting a vulnerability
+
+Do not publish sensitive exploit details in a general issue. Use a private GitHub security advisory for this repository if that feature is enabled, and include the affected component, reproduction steps, impact, and any suggested mitigation. No response-time or remediation-time SLA is currently claimed.
