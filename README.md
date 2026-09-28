@@ -6,24 +6,24 @@ This project focuses on the platform behavior around model inference: admission 
 
 ## Project status
 
-The core policy modules and an in-process request lifecycle are implemented and covered by automated tests. An earlier revision of the service was successfully deployed and run on AWS. The current revision includes additional modules and a package rename, so its AWS deployment path needs to be revalidated after the remaining repository-level regressions are repaired.
+The inference control plane is implemented as a working engineering prototype with a reviewer-facing local experience and extensive automated coverage. The current `main` release includes a guided browser demo, interactive Swagger/OpenAPI documentation, deterministic request routing, queueing and batching policy, GPU-aware scheduling, tenant controls, result tracking, audit history, reconciliation, observability, and AWS adapter/infrastructure boundaries.
 
 Status as of September 8, 2026:
 
 | Area | Current state |
 | --- | --- |
 | Core routing, batching, scheduling, resilience, and tenant policies | Implemented and unit tested |
-| In-process gateway-to-worker lifecycle | Implemented and exercised by the unit suite |
-| Unit suite | 240 passing tests |
-| Statement coverage | 76% across `src/ai_inference` |
-| Security scan | No medium- or high-severity Bandit findings |
-| Local demo | Startup defect corrected in the development worktree; health, submission, processing, and result polling verified locally |
-| Standalone integration suite | Not green; one test file is malformed and three health-monitoring tests require updates |
-| AWS deployment | An earlier revision was deployed and run successfully; the current CDK entry point retains a pre-rename import and needs revalidation |
-| GitHub Actions | Workflow is present but malformed on the default branch; there is not yet a successful CI run |
-| Production readiness | Engineering prototype; prior deployment success does not establish production readiness for the current revision |
+| In-process gateway-to-worker lifecycle | Implemented and exercised end to end in the local demo |
+| Unit suite | 245 passing tests in the latest released feature verification |
+| Security scan | No medium- or high-severity Bandit findings in recent verification |
+| Guided local demo | Verified through an eight-stage browser walkthrough using the real health, submission, result-polling, and audit endpoints |
+| API exploration | FastAPI Swagger/OpenAPI available with grouped operations, descriptions, and ready-to-run examples |
+| AWS-backed boundaries | SQS, DynamoDB, CloudWatch, SNS, Bedrock, ECS/ASG, KMS, IAM, VPC, and CDK interfaces are implemented |
+| AWS deployment | An earlier revision was deployed successfully; the current infrastructure/deployment path still requires revalidation |
+| CI/CD | A legacy workflow remains in the repository and needs modernization before it should be treated as current deployment automation |
+| Production readiness | Engineering prototype; the local control-plane behavior is verified, while production deployment evidence remains intentionally separate |
 
-The immediate goal is repository hardening: repair CI and the CDK entry point, add a demo startup regression test, bring integration and quality checks to green, and publish reproducible evidence for those results.
+The current emphasis is no longer basic demo hardening. It is tightening deployment automation, retiring legacy Air-Gapped RAG naming and workflow assumptions, and publishing stronger infrastructure and performance evidence.
 
 ## Why this project exists
 
@@ -77,7 +77,7 @@ The test runner ensures the test dependencies are installed and executes every t
 Expected result at the current commit:
 
 ```text
-240 passed
+245 passed
 ```
 
 ### Run the local demo
@@ -90,13 +90,27 @@ The demo runner performs a lightweight dependency check and starts the in-proces
 ./scripts/run_demo.sh
 ```
 
-Then use another terminal to inspect the service:
+Then open:
+
+```text
+http://127.0.0.1:8080/
+```
+
+The landing page provides a guided eight-stage walkthrough of the request lifecycle: intake, admission, routing, queueing, batching, scheduling, execution, result retrieval, and audit history. It drives the actual local API rather than a static mock.
+
+For direct API exploration, open:
+
+```text
+http://127.0.0.1:8080/docs
+```
+
+Raw health remains available at:
 
 ```bash
 curl -s http://127.0.0.1:8080/health
 ```
 
-The gateway runs at `http://127.0.0.1:8080`. Stop it with `Ctrl+C`.
+Stop the service with `Ctrl+C`.
 
 When the environment is already ready, the launcher skips installation entirely. If dependencies are missing, it explains that setup may briefly use significant CPU, disk, and memory on older systems before running the one-time installer.
 
@@ -211,7 +225,7 @@ These definitions demonstrate infrastructure intent and build on a previously su
 | Mode | Purpose | Current verification |
 | --- | --- | --- |
 | In-memory components | Fast policy development and isolated tests | Verified by the passing unit suite |
-| In-process lifecycle | Gateway, queue, worker, result store, audit, and metrics without AWS | Exercised by tests and a local submit-to-completion smoke test after the initialization fix |
+| In-process lifecycle | Gateway, queue, worker, result store, audit, and metrics without AWS | Verified by tests and the guided browser demo through submission, completion, polling, and audit lookup |
 | AWS-backed adapters | SQS, DynamoDB, CloudWatch, SNS, Bedrock, ECS, and ASG boundaries | Implemented; an earlier service revision was deployed successfully, while the current revision awaits revalidation |
 | vLLM adapter | OpenAI-compatible private model endpoint | Implemented and tested with mocked HTTP/client behavior; current performance evidence is not included |
 
@@ -302,18 +316,18 @@ Current boundaries include:
 - An earlier AWS deployment succeeded, but the current revision has not been revalidated after the package rename and later module additions
 - Bedrock failure analysis would require an explicit redaction and data-handling policy before use with sensitive records
 
-## Known limitations
+## Current boundaries
 
-- The demo initialization-order regression must land with a regression test so startup remains verified.
-- The CDK and legacy command entry points retain imports from the former `air_gapped_rag` package name.
-- The GitHub Actions workflow and one older integration test were committed with escaped newline characters and cannot be parsed normally.
-- Three health-monitoring integration tests have outdated worker configuration mocks.
-- A top-level `pytest` invocation also collects `scripts/send_test.py`, which creates an AWS client during import.
-- Black, isort, flake8, and mypy are not currently green as a combined quality gate.
-- Reconciliation does not persist and faithfully replay the original request payload; its resubmission payload is synthetic.
+The core local control-plane experience is working and verified. The remaining limitations are primarily production-infrastructure and evidence gaps rather than blockers to reviewing the implemented architecture:
+
+- The CDK and legacy deployment entry points still contain assumptions and names from the earlier `air_gapped_rag` iteration and require cleanup before current deployment validation.
+- The checked-in GitHub Actions workflow is legacy deployment automation and should be modernized before being presented as the current CI/CD path.
+- Older integration and health-monitoring tests still need consolidation with the current unit and demo verification path.
+- The full Black, isort, flake8, and mypy quality gate has not yet been re-established as a green repository-wide check.
+- Reconciliation does not yet persist and faithfully replay the original request payload; its resubmission payload is synthetic.
 - Deployed priority behavior is not yet mapped to separate SQS queues or FIFO message groups.
-- Gateway and worker must be configured to use the same DynamoDB result table in a deployed environment; that path is not validated end to end.
-- The repository does not retain current benchmark evidence for vLLM throughput, GPU placement, autoscaling, VPN connectivity, or failure-recovery behavior.
+- Gateway and worker must be configured to use the same DynamoDB result table in a deployed environment; that path has not been revalidated end to end for the current revision.
+- The repository does not yet retain current benchmark evidence for vLLM throughput, GPU placement, autoscaling, VPN connectivity, or failure-recovery behavior.
 
 ## Repository layout
 
@@ -334,13 +348,12 @@ tests/
 
 ## Near-term hardening plan
 
-1. Repair the GitHub Actions workflow and require a green pull-request check.
-2. Complete the `air_gapped_rag` to `ai_inference` rename in every entry point and deployment artifact.
-3. Add a regression test for interactive demo startup and the submit-to-completion path.
-4. Repair or retire the older integration tests and make full test discovery safe.
-5. Align Black, isort, flake8, and mypy configuration and bring the quality gate to green.
-6. Validate CDK synthesis for development, staging, and production configurations.
-7. Add deployment evidence or keep AWS resources explicitly labeled as unvalidated infrastructure definitions.
+1. Replace the legacy Air-Gapped RAG GitHub Actions workflow with current inference-platform CI/CD.
+2. Complete the remaining `air_gapped_rag` to `ai_inference` cleanup in deployment entry points and artifacts.
+3. Consolidate or retire the older integration tests and make repository-wide test discovery safe.
+4. Re-establish Black, isort, flake8, and mypy as a green automated quality gate.
+5. Validate CDK synthesis and deployment for the current package and infrastructure shape.
+6. Publish reproducible deployment and performance evidence where appropriate.
 
 Longer-term enhancements include server-sent event streaming, stronger workload identity, faithful reconciliation replay, production priority queues, live GPU inventory, multi-region recovery, and load-test evidence.
 
