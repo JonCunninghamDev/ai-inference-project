@@ -15,7 +15,10 @@
       "max_session_hours": 3,
       "approval_ceiling_usd": 5,
       "public_inbound_allowed": false
-    }
+    },
+    "approved_date": "2026-09-29",
+    "approval_issue": 32,
+    "approval_scope": "One AWS g6.2xlarge On-Demand in us-east-1; maximum 3 hours and $5 total; no public inbound; pinned Production Evidence v1 runtime/model."
   },
   "hardware": {
     "cloud": "aws",
