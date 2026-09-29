@@ -14,13 +14,13 @@ Status as of September 8, 2026:
 | --- | --- |
 | Core routing, batching, scheduling, resilience, and tenant policies | Implemented and unit tested |
 | In-process gateway-to-worker lifecycle | Implemented and exercised end to end in the local demo |
-| Unit suite | 245 passing tests in the latest released feature verification |
-| Security scan | No medium- or high-severity Bandit findings in recent verification |
+| Unit suite | Required CI runs the full unit suite; exact passing-test counts are recorded in per-change evidence |
+| Security scan | Required CI runs Bandit with medium/high findings treated as failures |
 | Guided local demo | Verified through an eight-stage browser walkthrough using the real health, submission, result-polling, and audit endpoints |
 | API exploration | FastAPI Swagger/OpenAPI available with grouped operations, descriptions, and ready-to-run examples |
 | AWS-backed boundaries | SQS, DynamoDB, CloudWatch, SNS, Bedrock, ECS/ASG, KMS, IAM, VPC, and CDK interfaces are implemented |
 | AWS deployment | An earlier revision was deployed successfully; the current infrastructure/deployment path still requires revalidation |
-| CI/CD | A legacy workflow remains in the repository and needs modernization before it should be treated as current deployment automation |
+| CI/CD | Non-deploying Platform Consumer CI is pinned to an immutable Engineering Platform release; deployment remains a separate human-approved action |
 | Production readiness | Engineering prototype; the local control-plane behavior is verified, while production deployment evidence remains intentionally separate |
 
 The current emphasis is no longer basic demo hardening. It is tightening deployment automation, retiring legacy Air-Gapped RAG naming and workflow assumptions, and publishing stronger infrastructure and performance evidence.
@@ -74,11 +74,9 @@ The test runner ensures the test dependencies are installed and executes every t
 ./scripts/run_unit_tests.sh
 ```
 
-Expected result at the current commit:
-
-```text
-245 passed
-```
+The exact passing-test count changes as regression coverage grows. Required
+Platform Consumer CI is authoritative, and each engineering-run evidence record
+captures the exact count for that merged increment.
 
 ### Run the local demo
 
@@ -132,11 +130,9 @@ Generate a coverage report with:
 uv run pytest tests/unit -q --cov=ai_inference --cov-report=term
 ```
 
-Expected aggregate result at the current commit:
-
-```text
-TOTAL 2257 statements, 545 missed, 76% coverage
-```
+Required CI now emits the current unit-test coverage report on every pull
+request. Treat the CI output for the tested commit as authoritative rather than
+a hard-coded README percentage.
 
 If [`mise`](https://mise.jdx.dev/) is installed, the repository also provides these aliases:
 
@@ -321,7 +317,7 @@ Current boundaries include:
 The core local control-plane experience is working and verified. The remaining limitations are primarily production-infrastructure and evidence gaps rather than blockers to reviewing the implemented architecture:
 
 - The CDK and legacy deployment entry points still contain assumptions and names from the earlier `air_gapped_rag` iteration and require cleanup before current deployment validation.
-- The checked-in GitHub Actions workflow is legacy deployment automation and should be modernized before being presented as the current CI/CD path.
+- Required CI is non-deploying and now includes compile, Bandit, unit-test, and coverage checks; the full Black, isort, flake8, and mypy gate remains tracked quality debt.
 - Older integration and health-monitoring tests still need consolidation with the current unit and demo verification path.
 - The full Black, isort, flake8, and mypy quality gate has not yet been re-established as a green repository-wide check.
 - Reconciliation does not yet persist and faithfully replay the original request payload; its resubmission payload is synthetic.
@@ -348,12 +344,11 @@ tests/
 
 ## Near-term hardening plan
 
-1. Replace the legacy Air-Gapped RAG GitHub Actions workflow with current inference-platform CI/CD.
-2. Complete the remaining `air_gapped_rag` to `ai_inference` cleanup in deployment entry points and artifacts.
-3. Consolidate or retire the older integration tests and make repository-wide test discovery safe.
-4. Re-establish Black, isort, flake8, and mypy as a green automated quality gate.
-5. Validate CDK synthesis and deployment for the current package and infrastructure shape.
-6. Publish reproducible deployment and performance evidence where appropriate.
+1. Complete the remaining `air_gapped_rag` to `ai_inference` cleanup in deployment entry points and artifacts.
+2. Consolidate or retire the older integration tests and make repository-wide test discovery safe.
+3. Re-establish Black, isort, flake8, and mypy as a green automated quality gate.
+4. Validate an approved AWS deployment for the current package and infrastructure shape; credential-free CDK synthesis is already CI-verified.
+5. Publish reproducible hardware-backed performance and failure-recovery evidence.
 
 Longer-term enhancements include server-sent event streaming, stronger workload identity, faithful reconciliation replay, production priority queues, live GPU inventory, multi-region recovery, and load-test evidence.
 
