@@ -1,6 +1,6 @@
 # Worker Metrics Private Network Contract
 
-Status: implementation pending CI verification
+Status: implementation verified in required consumer CI
 Date: 2026-09-29
 Issue: #21
 
@@ -79,3 +79,20 @@ Before accepting full distributed Production Evidence v1 telemetry:
 - an unintended/public address cannot reach the listener;
 - the worker metric families appear separately from gateway metrics;
 - the exact network path is recorded if scraping is remote.
+
+
+## CI verification
+
+Corrected implementation head:
+
+- commit: `f61cd53599271f7bdce614e35809b356b5a3cdd0`
+- GitHub Actions run: `36629376165`
+- Python 3.12
+- unit suite: **281 passed in 29.45s**
+- conclusion: `success`
+- cloud resources changed: none
+- security-group/IAM/VPN changes: none
+
+The first PR run failed because legacy worker test mocks did not define the new
+secure-default metrics settings. The fix updated test fixtures; the private-bind
+validation was not weakened.
