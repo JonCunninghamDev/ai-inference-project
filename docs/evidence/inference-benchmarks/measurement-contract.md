@@ -66,15 +66,15 @@ labels to prevent unbounded cardinality.
 
 Process boundary note:
 
-- In demo mode, gateway and demo worker share one MetricsCollector, so /metrics
-  contains both control-plane and worker event aggregates.
+- In demo mode, gateway and demo worker share one MetricsCollector, so the
+  gateway /metrics endpoint can contain both control-plane and worker aggregates.
 - In a distributed deployment, gateway and worker are separate processes.
-  The worker now retains the same bounded Prometheus aggregates in process, but
-  this issue does not open a new worker HTTP listener because that would change
-  network exposure and requires a separate human gate.
-- Before hardware-backed production evidence is accepted, the deployment must
-  provide an approved worker metrics export path or explicitly collect worker
-  event evidence by another reproducible mechanism.
+- Issue #21 adds an opt-in worker metrics listener with a private-only bind
+  contract. It is disabled by default, binds to 127.0.0.1 by default, and
+  rejects wildcard/public bind addresses.
+- A remote Prometheus deployment still requires a separately approved private
+  network/security-group path. The process listener does not authorize public
+  exposure.
 
 ### 3. vLLM native metrics
 
@@ -112,10 +112,11 @@ DCGM, exporter version, and collector configuration determine availability.
 
 ## Prometheus baseline
 
-config/observability/prometheus.yml defines a single-node baseline with three
+config/observability/prometheus.yml defines a single-node baseline with four
 scrape jobs:
 
 - 127.0.0.1:8080 for the inference gateway
+- 127.0.0.1:9101 for the worker
 - 127.0.0.1:8000 for vLLM
 - 127.0.0.1:9400 for DCGM Exporter
 
