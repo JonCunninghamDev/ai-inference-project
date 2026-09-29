@@ -36,6 +36,9 @@ class TestWorkerConfig:
         assert config.aws_region == "us-east-1"
         assert config.queue_name == "test-queue"
         assert config.vllm_temperature == 0.1  # default value
+        assert config.worker_metrics_enabled is False
+        assert config.worker_metrics_host == "127.0.0.1"
+        assert config.worker_metrics_port == 9101
     
     def test_invalid_vllm_url(self):
         """Test validation of vLLM URL."""

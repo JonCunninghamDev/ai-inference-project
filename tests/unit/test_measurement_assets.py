@@ -7,15 +7,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_prometheus_baseline_has_three_measurement_targets() -> None:
+def test_prometheus_baseline_has_four_measurement_targets() -> None:
     config = (ROOT / "config" / "observability" / "prometheus.yml").read_text(
         encoding="utf-8"
     )
 
     assert "127.0.0.1:8080" in config
+    assert "127.0.0.1:9101" in config
     assert "127.0.0.1:8000" in config
     assert "127.0.0.1:9400" in config
-    assert config.count("metrics_path: /metrics") == 3
+    assert config.count("metrics_path: /metrics") == 4
 
 
 def test_benchmark_profile_separates_terminal_latency_from_ttft() -> None:

@@ -23,6 +23,7 @@ from ai_inference.core.audit import AuditEvent, AuditLog, NullAuditLog
 from ai_inference.core.logging import StructuredFormatter
 from ai_inference.core.metrics import MetricsCollector, PrometheusMetricsSink
 from ai_inference.core.ttl import RequestTTL
+from ai_inference.core.worker_metrics_server import WorkerMetricsServer
 from ai_inference.inference.circuit_breaker import CircuitBreaker, CircuitBreakerPolicy
 from ai_inference.inference.router import InferenceRequest, ModelProfile, ModelRouter
 from ai_inference.inference.batching import BatchCandidate, BatchingPolicy, DynamicBatcher, InferenceBatch
@@ -110,6 +111,16 @@ class RAGWorker:
         self.ai_client: Optional[OpenAI] = None
         self.result_store: ResultStore = result_store or self._initialize_result_store()
         self.metrics = metrics or MetricsCollector(PrometheusMetricsSink())
+        self.metrics_server: Optional[WorkerMetricsServer] = None
+        if (
+            getattr(self.config, "metrics_enabled", True)
+            and getattr(self.config, "worker_metrics_enabled", False)
+        ):
+            self.metrics_server = WorkerMetricsServer(
+                self.metrics,
+                host=getattr(self.config, "worker_metrics_host", "127.0.0.1"),
+                port=getattr(self.config, "worker_metrics_port", 9101),
+            )
         self.tenant_engine = tenant_engine
         self.audit: AuditLog = audit_log or NullAuditLog()
         self.request_ttl = RequestTTL(max_age_seconds=self.config.request_ttl_seconds)
@@ -717,6 +728,14 @@ class RAGWorker:
         self.logger.info(f"RAG Worker starting (environment: {self.config.aws_region})")
         self.logger.info(f"Queue URL: {self.config.queue_url}")
         self.logger.info(f"Kill switch: {self.config.ssm_kill_switch}")
+
+        if self.metrics_server is not None:
+            self.metrics_server.start()
+            self.logger.info(
+                "Worker metrics listening on http://%s:%s/metrics",
+                self.metrics_server.bound_host,
+                self.metrics_server.bound_port,
+            )
         
         # Start health check thread
         if self.config.health_check_enabled:
@@ -772,6 +791,9 @@ class RAGWorker:
             final_status = self.health.get_status()
             self.logger.info(f"Final health status: {final_status}")
             
+            if self.metrics_server is not None:
+                self.metrics_server.stop()
+
             # Close AI client if needed
             if hasattr(self.ai_client, 'close'):
                 self.ai_client.close()

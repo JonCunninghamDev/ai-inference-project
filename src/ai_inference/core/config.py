@@ -96,6 +96,20 @@ class WorkerConfig(BaseModel):
     # Monitoring Configuration
     health_check_enabled: bool = Field(True, description="Enable health checks")
     metrics_enabled: bool = Field(True, description="Enable metrics collection")
+    worker_metrics_enabled: bool = Field(
+        False,
+        description="Enable the private worker Prometheus listener",
+    )
+    worker_metrics_host: str = Field(
+        "127.0.0.1",
+        description="Loopback or private IP literal for worker metrics",
+    )
+    worker_metrics_port: int = Field(
+        9101,
+        ge=1,
+        le=65535,
+        description="Private worker Prometheus listener port",
+    )
     alert_email: Optional[str] = Field(None, description="Alert email address")
     
     @field_validator('vllm_url')
@@ -236,6 +250,9 @@ class ConfigManager:
             # Monitoring Configuration
             "health_check_enabled": os.getenv("HEALTH_CHECK_ENABLED", "true").lower() == "true",
             "metrics_enabled": os.getenv("METRICS_ENABLED", "true").lower() == "true",
+            "worker_metrics_enabled": os.getenv("WORKER_METRICS_ENABLED", "false").lower() == "true",
+            "worker_metrics_host": os.getenv("WORKER_METRICS_HOST", "127.0.0.1"),
+            "worker_metrics_port": int(os.getenv("WORKER_METRICS_PORT", "9101")),
             "alert_email": os.getenv("ALERT_EMAIL"),
         }
     
