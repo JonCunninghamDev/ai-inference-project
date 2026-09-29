@@ -37,8 +37,9 @@ are not yet exposed over a separately reachable listener.
 | AWS/GPU/IAM/network mutations | 0 |
 | rollbacks | 0 |
 
-An additional required CI run is expected after this evidence-only commit.
-That run validates the final evidence text and is not implementation rework.
+Evidence finalization remains subject to the repository-required CI merge gate.
+A successful merge therefore means the final evidence text, not only the
+implementation head recorded above, passed the same consumer validation.
 
 ## Verification failures
 
