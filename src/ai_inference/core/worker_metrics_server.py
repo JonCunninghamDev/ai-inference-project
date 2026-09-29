@@ -26,8 +26,16 @@ def validate_private_bind_host(host: str) -> str:
 
     if address.is_unspecified or address.is_multicast:
         raise ValueError("worker metrics bind host cannot be wildcard or multicast")
-    if not (address.is_loopback or address.is_private):
-        raise ValueError("worker metrics bind host must be loopback or private")
+
+    private_networks = (
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("fc00::/7"),
+    )
+    allowed = address.is_loopback or any(address in network for network in private_networks)
+    if not allowed:
+        raise ValueError("worker metrics bind host must be loopback or RFC1918/ULA private")
 
     return host
 
