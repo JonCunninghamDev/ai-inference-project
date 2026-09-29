@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Mapping
 import uvicorn
 
 from ai_inference.core.audit import AuditEvent, AuditLog, InMemoryAuditLog
-from ai_inference.core.metrics import InMemoryMetricsSink, JsonlMetricsSink, MetricsCollector
+from ai_inference.core.metrics import (\n    CompositeMetricsSink,\n    JsonlMetricsSink,\n    MetricsCollector,\n    PrometheusMetricsSink,\n)
 from ai_inference.core.priority_queue import PriorityInferenceQueue
 from ai_inference.core.reconciliation import ReconciliationConfig, ReconciliationEngine
 from ai_inference.core.reconciliation_scheduler import ReconciliationScheduler
