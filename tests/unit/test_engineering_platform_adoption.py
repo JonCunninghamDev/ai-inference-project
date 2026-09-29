@@ -36,7 +36,7 @@ def test_platform_consumer_ci_is_required_and_pinned() -> None:
 
     workflow = PLATFORM_CI.read_text(encoding="utf-8")
     assert EXPECTED_PLATFORM_COMMIT in workflow
-    assert "python -m compileall -q src tests" in workflow
+    assert "python -m compileall -q src tests/unit" in workflow
     assert "bandit -r src -ll" in workflow
     assert "tests/unit -q --cov=ai_inference" in workflow
     assert "--cov-report=term-missing" in workflow
