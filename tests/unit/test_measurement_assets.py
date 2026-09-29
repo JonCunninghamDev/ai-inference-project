@@ -80,7 +80,7 @@ def test_vllm_example_pins_model_revision_and_runtime() -> None:
     assert "VLLM_CONTAINER=vllm/vllm-openai:v0.30.0" in config
 
 
-def test_production_evidence_profile_keeps_gpu_spend_gate_closed() -> None:
+def test_production_evidence_profile_pins_approved_gpu_spend_scope() -> None:
     profile = json.loads(
         (
             ROOT
@@ -90,8 +90,19 @@ def test_production_evidence_profile_keeps_gpu_spend_gate_closed() -> None:
         ).read_text(encoding="utf-8")
     )
 
-    assert profile["authorization"]["gpu_cloud_spend_approved"] is False
+    assert profile["authorization"]["gpu_cloud_spend_approved"] is True
     assert profile["authorization"]["approval_ceiling_usd"] == 5.0
+    assert profile["authorization"]["approved_at"] == "2026-09-29"
+    assert profile["authorization"]["approved_by"] == "human"
+    assert profile["authorization"]["approved_scope"] == {
+        "region": "us-east-1",
+        "instance_type": "g6.2xlarge",
+        "purchase_model": "on-demand",
+        "gpu_count": 1,
+        "max_session_hours": 3,
+        "approval_ceiling_usd": 5,
+        "public_inbound_allowed": False,
+    }
     assert profile["hardware"]["region"] == "us-east-1"
     assert profile["hardware"]["instance_type"] == "g6.2xlarge"
     assert profile["hardware"]["purchase_model"] == "on-demand"
@@ -133,7 +144,9 @@ def test_first_gpu_spend_plan_has_termination_and_source_evidence() -> None:
         / "first-gpu-spend-plan.md"
     ).read_text(encoding="utf-8")
 
-    assert "GPU/cloud spend is **not approved**" in plan
+    assert "GPU/cloud spend is **approved for the bounded first session**" in plan
+    assert "maximum total authorized cloud spend: **$5.00**" in plan
+    assert "This approval does not authorize substituting another instance class" in plan
     assert "gateway API binds to loopback" in plan
     assert "dropped_iterations == 0" in plan
     assert "HTTP 429" in plan
