@@ -1,7 +1,7 @@
 # CDK Synthesis Baseline
 
 Issue: #17  
-Status: pending CI verification  
+Status: verified in required consumer CI  
 Baseline date: 2026-09-29
 
 ## Purpose
@@ -39,7 +39,16 @@ The unit suite includes a synthesis regression that:
 4. opens each emitted CloudFormation template;
 5. verifies resources and key outputs are present.
 
-CI result: pending.
+CI result: passed.
+
+- implementation commit: `d595cf1b31f8953e50b67186511563792e73d06b`
+- GitHub Actions run: `36624243406`
+- reusable platform workflow: `engineering-platform@b107c9306161b395cbcaffebb55e47850b999560`
+- Python: 3.12.14
+- unit/synthesis suite: **253 passed in 30.19s**
+- CI conclusion: `success`
+- AWS credentials used by the synthesis test: none
+- AWS resource creation/update/destruction: none
 
 ## Known limitations
 
