@@ -22,7 +22,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ai_inference.core.audit import AuditEvent, AuditLog, InMemoryAuditLog, NullAuditLog
 from ai_inference.core.logging import get_logger
-from ai_inference.core.metrics import (\n    PROMETHEUS_CONTENT_TYPE,\n    MetricsCollector,\n    PrometheusMetricsSink,\n)
+from ai_inference.core.metrics import (
+    PROMETHEUS_CONTENT_TYPE,
+    MetricsCollector,
+    PrometheusMetricsSink,
+)
 from ai_inference.core.result_store import InMemoryResultStore, InferenceResult, RequestStatus, ResultStore
 from ai_inference.gateway.admission import AdmissionController, AdmissionDecision, AdmissionPolicy, SystemLoad
 from ai_inference.gateway.auth import AuthProvider, AuthResult, NoAuthProvider
