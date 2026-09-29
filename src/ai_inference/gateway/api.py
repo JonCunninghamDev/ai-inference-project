@@ -17,12 +17,12 @@ from typing import Any, Dict, Mapping, Optional
 from uuid import uuid4
 
 import boto3
-from fastapi import FastAPI, HTTPException, Request as FastAPIRequest, status
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_inference.core.audit import AuditEvent, AuditLog, InMemoryAuditLog, NullAuditLog
 from ai_inference.core.logging import get_logger
-from ai_inference.core.metrics import MetricsCollector
+from ai_inference.core.metrics import (\n    PROMETHEUS_CONTENT_TYPE,\n    MetricsCollector,\n    PrometheusMetricsSink,\n)
 from ai_inference.core.result_store import InMemoryResultStore, InferenceResult, RequestStatus, ResultStore
 from ai_inference.gateway.admission import AdmissionController, AdmissionDecision, AdmissionPolicy, SystemLoad
 from ai_inference.gateway.auth import AuthProvider, AuthResult, NoAuthProvider
@@ -194,7 +194,7 @@ def create_app(
     router = router or build_router(settings)
     publisher = publisher or QueuePublisher(settings.queue_url, settings.aws_region)
     result_store = result_store or InMemoryResultStore()
-    metrics = metrics or MetricsCollector()
+    metrics = metrics or MetricsCollector(PrometheusMetricsSink())
     admission = admission or AdmissionController(metrics=metrics)
     tenant_engine = tenant_engine or TenantPolicyEngine(metrics=metrics)
     audit = audit_log or NullAuditLog()
@@ -244,6 +244,17 @@ def create_app(
                 "max_queue_depth": admission.policy.max_queue_depth,
             },
         }
+
+    @app.get(
+        "/metrics",
+        include_in_schema=False,
+    )
+    def prometheus_metrics() -> Response:
+        """Expose bounded control-plane metrics for Prometheus scraping."""
+        return Response(
+            content=metrics.render_prometheus(),
+            headers={"Content-Type": PROMETHEUS_CONTENT_TYPE},
+        )
 
     @app.get(
         "/v1/audit/{request_id}",
