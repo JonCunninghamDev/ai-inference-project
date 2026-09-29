@@ -1,6 +1,6 @@
 # Production Evidence v1 Measurement Contract
 
-Status: pre-GPU contract, no performance results yet
+Status: contract verified in CI; no hardware performance results yet
 Date established: 2026-09-29
 Issue: #19
 
@@ -168,3 +168,23 @@ Change one primary variable at a time where practical.
   https://docs.nvidia.com/datacenter/dcgm/latest/reference/dcgm-exporter-metrics.html
 - Grafana k6 thresholds:
   https://grafana.com/docs/k6/latest/using-k6/thresholds/
+
+
+## CI verification
+
+The pre-GPU measurement contract and its deterministic tests were verified on
+the corrected implementation head:
+
+- commit: `1b092785fce676ae86e6aa82cd6629ffbb0c69ef`
+- GitHub Actions run: `36626756651`
+- Engineering Platform reusable workflow:
+  `b107c9306161b395cbcaffebb55e47850b999560`
+- Python: 3.12
+- unit suite: **264 passed in 24.33s**
+- result: `success`
+- AWS/GPU resources created: none
+- IAM/network changes: none
+
+This verification establishes configuration and measurement-path correctness
+only. It does not establish model throughput, TTFT, TPOT, saturation behavior,
+GPU efficiency, or production reliability.
