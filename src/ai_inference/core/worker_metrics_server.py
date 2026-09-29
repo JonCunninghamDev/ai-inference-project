@@ -52,6 +52,8 @@ class WorkerMetricsServer:
     ) -> None:
         self.metrics = metrics
         self.host = validate_private_bind_host(host)
+        # Port 0 is accepted only for direct construction in tests so the OS can
+        # choose an ephemeral port. WorkerConfig requires runtime ports >= 1.
         if not (0 <= port <= 65535):
             raise ValueError("worker metrics port must be between 0 and 65535")
         self.port = port
