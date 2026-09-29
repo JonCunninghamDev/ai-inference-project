@@ -111,6 +111,8 @@ Required shape:
   group still allows no inbound connections;
 - outbound HTTPS is used for container/model retrieval and AWS control-plane
   access;
+- gateway API binds to loopback;
+- gateway `/metrics` is reachable only through that loopback listener;
 - vLLM binds to loopback;
 - worker metrics bind to loopback;
 - Prometheus and DCGM metrics are host-local;
@@ -133,11 +135,23 @@ The paid session must use all of these controls:
    downloading the model.
 5. Start vLLM on loopback and capture its `/metrics` inventory before load.
 6. Run smoke requests before the full arrival-rate sequence.
-7. Stop escalation when the service clearly saturates rather than forcing every
-   configured rate.
-8. Export/save benchmark and metric evidence before shutdown.
-9. Terminate the EC2 instance at the end of the session.
-10. Verify the instance state is terminated and no experiment-only billable
+7. For each arrival-rate point, preallocate k6 VUs from:
+   `ceil(rate_rps * expected_terminal_seconds * headroom)`. The baseline uses
+   5 expected terminal seconds and 1.25x headroom unless the measured prior rate
+   justifies a different recorded value.
+8. Treat HTTP 429 as an admission-control outcome, not an accepted-request
+   terminal failure. Record rejection rate separately and set an explicit
+   rejection threshold only when the rate point is intended to be below
+   saturation.
+9. Require `dropped_iterations == 0`. If k6 drops iterations, the rate point is
+   invalid because the load generator did not sustain the requested arrival
+   rate; increase preallocated VUs or stop rather than calling that service
+   saturation.
+10. Stop escalation when the service clearly saturates rather than forcing every
+    configured rate.
+11. Export/save benchmark and metric evidence before shutdown.
+12. Terminate the EC2 instance at the end of the session.
+13. Verify the instance state is terminated and no experiment-only billable
     resource remains.
 
 ## Automatic/early stop conditions
@@ -150,6 +164,9 @@ Terminate the run early if any of these occur:
 - GPU is not the expected L4 device;
 - metrics required for the baseline cannot be captured;
 - unexpected public ingress becomes reachable;
+- gateway or gateway metrics are bound to a non-loopback address;
+- k6 reports dropped iterations at a rate point and additional load-generator
+  capacity is not deliberately provisioned/recorded;
 - benchmark behavior indicates data loss/corruption rather than ordinary
   saturation;
 - the experiment cannot be completed within the three-hour window.
@@ -214,3 +231,13 @@ Planning head verified before the spend gate:
 - cloud spend incurred by this issue: $0
 
 The GPU/cloud spend authorization flag remains false after this verification.
+
+
+## Load-generator references added after external review
+
+- Grafana k6 thresholds:
+  https://grafana.com/docs/k6/latest/using-k6/thresholds/
+- Grafana k6 constant-arrival-rate executor:
+  https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/
+- Grafana k6 arrival-rate VU allocation:
+  https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/arrival-rate-vu-allocation/

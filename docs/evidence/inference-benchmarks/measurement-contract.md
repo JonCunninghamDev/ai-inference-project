@@ -36,10 +36,19 @@ GET /v1/inference/{request_id} until completed, failed, or timed out.
 
 Primary metrics:
 
-- inference_terminal_latency_ms: submit start through observed terminal result.
-- inference_terminal_success: completed terminal results divided by attempted iterations.
-- inference_rejected_total: HTTP 429 admission/tenant rejections.
-- http_req_duration and http_req_failed: HTTP-level behavior from k6.
+- inference_terminal_latency_ms: submit start through observed terminal result for accepted requests.
+- accepted_terminal_success: terminal success rate only among requests accepted with HTTP 202.
+- inference_admission_rejected_rate: fraction of submissions rejected with HTTP 429.
+- inference_rejected_total: count of HTTP 429 admission/tenant rejections.
+- unexpected_submit_failure: non-202/non-429 submission failure rate.
+- poll_http_failure: result-poll HTTP failure rate.
+- dropped_iterations: k6 iterations that could not start because the configured arrival rate exceeded available VUs.
+- http_req_duration: HTTP-level timing from k6.
+
+HTTP 429 is not counted as an accepted-request terminal failure. Saturation via
+admission control is therefore measured separately from reliability of work the
+platform actually accepted. A benchmark rate may optionally declare an
+admission-rejection threshold when it is intended to be below saturation.
 
 Important: inference_terminal_latency_ms is not TTFT. The public API is
 asynchronous and polling-based, so client-visible TTFT is not currently
@@ -72,9 +81,12 @@ Process boundary note:
 - Issue #21 adds an opt-in worker metrics listener with a private-only bind
   contract. It is disabled by default, binds to 127.0.0.1 by default, and
   rejects wildcard/public bind addresses.
+- The first paid baseline also requires the gateway and its /metrics route to
+  bind to loopback with no public inbound rules. Hiding /metrics from OpenAPI
+  is not treated as access control.
 - A remote Prometheus deployment still requires a separately approved private
-  network/security-group path. The process listener does not authorize public
-  exposure.
+  network/security-group path. Before any future public gateway deployment,
+  issue #27 requires an authenticated/private metrics boundary.
 
 ### 3. vLLM native metrics
 
@@ -127,8 +139,10 @@ targets with approved reachable addresses.
 ## Benchmark profile
 
 benchmarks/profiles/production-evidence-v1.json defines the first planned
-hardware-backed profile. The model and exact revision remain unset until the
-GPU provisioning gate, so model choice cannot silently change between runs.
+hardware-backed profile. Issue #23 pinned the model, immutable model revision,
+vLLM runtime/container, instance type, and spend ceiling before execution so
+those inputs cannot silently change between runs. The machine-readable spend
+authorization remains false until an explicit human gate is granted.
 
 The initial load sequence is arrival-rate based:
 
@@ -138,6 +152,17 @@ Each level should run long enough to reach a stable operating regime. The
 profile currently specifies five minutes per level. If the deployed service
 saturates earlier, record the saturation point and stop escalating rather than
 turning the benchmark into an uncontrolled failure test.
+
+For a constant-arrival-rate run, preallocated VUs default to:
+
+    ceil(rate_rps * expected_terminal_seconds * vu_headroom_multiplier)
+
+The baseline uses 5 expected terminal seconds and 1.25x headroom. Dynamic
+maxVUs expansion is intentionally disabled so VU allocation does not silently
+change during a rate point. If k6 reports dropped_iterations > 0, that rate
+point is invalid: the load generator failed to sustain the requested arrival
+rate. Increase the deliberately recorded VU allocation or stop; do not label a
+load-generator capacity failure as service saturation.
 
 ## Comparison rules
 
@@ -169,6 +194,10 @@ Change one primary variable at a time where practical.
   https://docs.nvidia.com/datacenter/dcgm/latest/reference/dcgm-exporter-metrics.html
 - Grafana k6 thresholds:
   https://grafana.com/docs/k6/latest/using-k6/thresholds/
+- Grafana k6 constant-arrival-rate:
+  https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/
+- Grafana k6 arrival-rate VU allocation:
+  https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/arrival-rate-vu-allocation/
 
 
 ## CI verification

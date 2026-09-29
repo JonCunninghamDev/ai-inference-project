@@ -19,7 +19,10 @@ jobs:
       python_version: "3.12"
       install_uv: true
       python_install_command: uv sync --frozen --extra dev --extra test
-      python_test_command: uv run pytest tests/unit -q
+      python_test_command: >-
+        uv run python -m compileall -q src tests/unit &&
+        uv run bandit -r src -ll &&
+        uv run pytest tests/unit -q --cov=ai_inference --cov-report=term-missing
       python_build_command: ""
       artifact_retention_days: 7
       timeout_minutes: 30
