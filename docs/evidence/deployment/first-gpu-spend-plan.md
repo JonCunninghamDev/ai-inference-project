@@ -1,6 +1,6 @@
 # First GPU Baseline Spend Plan
 
-Status: plan verified in required consumer CI; GPU/cloud spend is **not approved**
+Status: plan verified in required consumer CI; GPU/cloud spend is **approved for the bounded first session**
 Date captured: 2026-09-29
 Issue: #23
 
@@ -9,7 +9,7 @@ Issue: #23
 This plan pins the first hardware-backed Production Evidence v1 runtime so the
 cloud-spend gate can be decided against a concrete, reproducible configuration.
 
-Merging this plan does not create AWS resources or authorize spend.
+The plan itself created no AWS resources. Human authorization for the exact bounded session below was granted on 2026-09-29 through issue #30.
 
 ## Pinned baseline
 
@@ -230,7 +230,7 @@ Planning head verified before the spend gate:
 - AWS/GPU resources created: none
 - cloud spend incurred by this issue: $0
 
-The GPU/cloud spend authorization flag remains false after this verification.
+The original planning verification kept the GPU/cloud spend authorization false. Issue #30 subsequently records explicit human approval for the exact existing profile without changing its hardware, runtime, model, network, duration, or $5 ceiling.
 
 
 ## Load-generator references added after external review
@@ -241,3 +241,21 @@ The GPU/cloud spend authorization flag remains false after this verification.
   https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/
 - Grafana k6 arrival-rate VU allocation:
   https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/arrival-rate-vu-allocation/
+
+
+## Human spend authorization
+
+Approved on 2026-09-29 under issue #30 for exactly this Production Evidence v1 session:
+
+- one AWS `g6.2xlarge` On-Demand instance in `us-east-1`;
+- one NVIDIA L4 GPU;
+- maximum session duration: 3 hours;
+- maximum total authorized cloud spend: **$5.00**;
+- vLLM `0.30.0`;
+- model `Qwen/Qwen3-4B-Instruct-2507`;
+- immutable model revision `cdbee75f17c01a7cc42f958dc650907174af0554`;
+- no public inbound rules;
+- gateway, gateway metrics, vLLM, and worker metrics remain loopback/private;
+- terminate immediately on any documented stop condition or at the three-hour limit.
+
+This approval does not authorize substituting another instance class, region, model revision, runtime, public ingress path, longer duration, or higher spend ceiling.
