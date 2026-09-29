@@ -29,3 +29,7 @@ run = "uv run streamlit run src/ai_inference/dashboard.py"
 [tasks.lint]
 description = "Run linters"
 run = "uv run python -m black --check src tests && uv run python -m isort --check src tests"
+
+[tasks."benchmark:k6"]
+description = "Run the asynchronous inference benchmark (requires k6)"
+run = "k6 run benchmarks/k6/async_inference.js"

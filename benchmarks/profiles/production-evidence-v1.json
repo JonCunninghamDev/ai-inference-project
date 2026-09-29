@@ -1,0 +1,59 @@
+{
+  "profile_id": "production-evidence-v1",
+  "description": "Hardware-backed inference baseline to execute after the GPU provisioning gate.",
+  "api_mode": "asynchronous_polling",
+  "model": {
+    "source": "MODEL environment variable",
+    "revision_required": true
+  },
+  "workload": {
+    "input_tokens_target": 500,
+    "output_tokens_target": 100,
+    "arrival_rates_rps": [1, 5, 10, 25, 50, 100, 200],
+    "duration_per_level": "5m",
+    "poll_interval_ms": 250
+  },
+  "slo_baseline": {
+    "terminal_success_rate_min": 0.99,
+    "terminal_latency_p95_ms_max": 60000,
+    "note": "Terminal latency is submit-to-terminal-result latency and is not TTFT."
+  },
+  "metric_sources": {
+    "control_plane": [
+      "ai_inference_gateway_requests_total",
+      "ai_inference_worker_requests_total",
+      "ai_inference_queue_wait_seconds",
+      "ai_inference_inference_duration_seconds",
+      "ai_inference_batch_size",
+      "ai_inference_batch_estimated_tokens",
+      "ai_inference_scheduling_decisions_total"
+    ],
+    "vllm": [
+      "vllm:num_requests_running",
+      "vllm:num_requests_waiting",
+      "vllm:kv_cache_usage_perc",
+      "vllm:prompt_tokens_total",
+      "vllm:generation_tokens_total",
+      "vllm:time_to_first_token_seconds",
+      "vllm:request_time_per_output_token_seconds",
+      "vllm:e2e_request_latency_seconds",
+      "vllm:request_queue_time_seconds",
+      "vllm:request_prefill_time_seconds",
+      "vllm:request_decode_time_seconds"
+    ],
+    "dcgm": [
+      "DCGM_FI_DEV_GPU_UTIL",
+      "DCGM_FI_DEV_FB_USED",
+      "DCGM_FI_DEV_FB_FREE",
+      "DCGM_FI_DEV_GPU_TEMP",
+      "DCGM_FI_DEV_POWER_USAGE"
+    ],
+    "load_generator": [
+      "inference_terminal_latency_ms",
+      "inference_terminal_success",
+      "inference_rejected_total",
+      "http_req_failed",
+      "http_req_duration"
+    ]
+  }
+}
