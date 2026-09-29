@@ -1,0 +1,119 @@
+{
+  "schema_version": "engineering-policy/v1",
+  "platform": {
+    "repository": "JonCunninghamDev/engineering-platform",
+    "version": "v1.0.0",
+    "commit": "b107c9306161b395cbcaffebb55e47850b999560"
+  },
+  "repository": {
+    "policy_id": "ai-inference-project",
+    "description": "Repository-local governance for the secure AI inference control-plane engineering prototype."
+  },
+  "branches": {
+    "release": "main",
+    "integration": "develop",
+    "temporary_prefixes": ["feature/", "fix/", "agent/"]
+  },
+  "profiles": ["capability.python"],
+  "capabilities": {
+    "toolchain": ["runtime.python"],
+    "tests": ["test.python"]
+  },
+  "review": {
+    "pull_requests_required": true,
+    "required_checks": ["Platform Consumer CI"],
+    "human_approval_for": [
+      "release",
+      "shared_contract",
+      "reusable_workflow",
+      "security",
+      "credentials",
+      "destructive_operation",
+      "backward_incompatible_change",
+      "cross_repository_risk"
+    ]
+  },
+  "delivery": {
+    "implementation_target": "integration",
+    "release_route": "integration_to_release",
+    "direct_release_writes": false,
+    "hotfix_route": "integration_first"
+  },
+  "permissions": {
+    "read": {
+      "tier": "autonomous",
+      "risk": "low",
+      "actions": ["repository.read", "issue.read", "test.inspect"]
+    },
+    "bounded_write": {
+      "tier": "bounded",
+      "risk": "medium",
+      "actions": ["branch.write", "draft.write", "test.write", "issue.write"]
+    },
+    "consequential_write": {
+      "tier": "approval_required",
+      "risk": "high",
+      "actions": ["release.write", "external.write", "credential.write", "destructive.write"]
+    }
+  },
+  "protected_paths": [
+    ".github/workflows/**",
+    "AGENTS.md",
+    "engineering-policy.json",
+    "docs/engineering-platform/**"
+  ],
+  "validation": {
+    "stages": [
+      {
+        "id": "python-after-write",
+        "stage": "after_write",
+        "capability": "test.python",
+        "required": false
+      },
+      {
+        "id": "python-pre-commit",
+        "stage": "pre_commit",
+        "capability": "test.python",
+        "required": true
+      },
+      {
+        "id": "python-completion",
+        "stage": "completion_gate",
+        "capability": "test.python",
+        "required": true
+      }
+    ]
+  },
+  "execution_budgets": {
+    "max_steps": 200,
+    "max_elapsed_minutes": 60,
+    "max_retries": 2,
+    "max_cost_usd": 10.0,
+    "required_dimensions": ["max_steps", "max_retries"]
+  },
+  "overrides": [
+    {
+      "id": "infrastructure-human-gates",
+      "effect": "restrict",
+      "reason": "Cloud, GPU, identity, network, deployment, and recurring-cost actions have external or financial consequences and require explicit human approval.",
+      "issue": "#15",
+      "expires_on": null,
+      "restrictions": {
+        "require_human_approval_for": [
+          "cloud_resource_creation",
+          "gpu_resource_creation",
+          "recurring_cost_increase",
+          "iam_change",
+          "network_exposure_change",
+          "production_deployment"
+        ]
+      }
+    }
+  ],
+  "exceptions": [],
+  "compatibility": {
+    "policy_schema": "engineering-policy/v1",
+    "profile_schema": "repository-profile/v1",
+    "minimum_platform_version": "1.0.0"
+  }
+}
