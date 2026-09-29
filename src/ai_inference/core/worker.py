@@ -21,7 +21,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from .config import get_config, WorkerConfig
 from ai_inference.core.audit import AuditEvent, AuditLog, NullAuditLog
 from ai_inference.core.logging import StructuredFormatter
-from ai_inference.core.metrics import MetricsCollector
+from ai_inference.core.metrics import MetricsCollector, PrometheusMetricsSink
 from ai_inference.core.ttl import RequestTTL
 from ai_inference.inference.circuit_breaker import CircuitBreaker, CircuitBreakerPolicy
 from ai_inference.inference.router import InferenceRequest, ModelProfile, ModelRouter
@@ -103,7 +103,7 @@ class RAGWorker:
         self.ssm = self.session.client("ssm")
         self.ai_client: Optional[OpenAI] = None
         self.result_store: ResultStore = result_store or self._initialize_result_store()
-        self.metrics = metrics or MetricsCollector()
+        self.metrics = metrics or MetricsCollector(PrometheusMetricsSink())
         self.tenant_engine = tenant_engine
         self.audit: AuditLog = audit_log or NullAuditLog()
         self.request_ttl = RequestTTL(max_age_seconds=self.config.request_ttl_seconds)
