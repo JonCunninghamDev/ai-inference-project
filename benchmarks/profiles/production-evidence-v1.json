@@ -50,12 +50,21 @@
       200
     ],
     "duration_per_level": "5m",
-    "poll_interval_ms": 250
+    "poll_interval_ms": 250,
+    "load_generator": {
+      "expected_terminal_seconds_for_vu_planning": 5,
+      "vu_headroom_multiplier": 1.25,
+      "preallocated_vus_formula": "ceil(rate_rps * expected_terminal_seconds * vu_headroom_multiplier)",
+      "dynamic_max_vus_enabled": false,
+      "dropped_iterations_must_equal": 0,
+      "note": "A rate point is invalid if k6 drops iterations; do not label load-generator saturation as service saturation."
+    }
   },
   "slo_baseline": {
-    "terminal_success_rate_min": 0.99,
+    "accepted_terminal_success_rate_min": 0.99,
     "terminal_latency_p95_ms_max": 60000,
-    "note": "Terminal latency is submit-to-terminal-result latency and is not TTFT."
+    "admission_rejection_rate_max": null,
+    "note": "Accepted-request terminal success excludes HTTP 429 admission rejections. Admission rejection is measured separately and may be thresholded explicitly per rate. Terminal latency is submit-to-terminal-result latency and is not TTFT."
   },
   "metric_sources": {
     "control_plane": [
@@ -89,10 +98,21 @@
     ],
     "load_generator": [
       "inference_terminal_latency_ms",
-      "inference_terminal_success",
+      "accepted_terminal_success",
+      "inference_admission_rejected_rate",
       "inference_rejected_total",
-      "http_req_failed",
+      "unexpected_submit_failure",
+      "poll_http_failure",
+      "dropped_iterations",
       "http_req_duration"
     ]
+  },
+  "network": {
+    "public_inbound_allowed": false,
+    "gateway_bind_host": "127.0.0.1",
+    "gateway_metrics_exposure": "loopback_only",
+    "vllm_bind_host": "127.0.0.1",
+    "worker_metrics_bind_host": "127.0.0.1",
+    "security_group_inbound_rules": "none"
   }
 }
