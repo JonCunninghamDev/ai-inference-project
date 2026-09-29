@@ -197,7 +197,6 @@ class PrometheusMetricsSink:
                         "outcome": "accepted",
                         "model": fields.get("model", ""),
                         "event_type": fields.get("event_type", ""),
-                        "reason": "",
                     },
                 )
             elif event.event_type == "request_rejected":
@@ -207,14 +206,13 @@ class PrometheusMetricsSink:
                         "outcome": "rejected",
                         "model": "",
                         "event_type": "",
-                        "reason": fields.get("reason", "unknown"),
                     },
                 )
             elif event.event_type == "inference_completed":
                 model = fields.get("model", "")
                 self._inc(
                     "ai_inference_worker_requests_total",
-                    {"outcome": "completed", "model": model, "reason": ""},
+                    {"outcome": "completed", "model": model},
                 )
                 self._observe(
                     "ai_inference_inference_duration_seconds",
@@ -228,7 +226,6 @@ class PrometheusMetricsSink:
                     {
                         "outcome": "failed",
                         "model": fields.get("model", ""),
-                        "reason": fields.get("error", "unknown"),
                     },
                 )
             elif event.event_type == "queue_wait_time":
@@ -261,7 +258,6 @@ class PrometheusMetricsSink:
                     {
                         "model": fields.get("model", ""),
                         "scheduled": str(bool(fields.get("scheduled"))).lower(),
-                        "reason": fields.get("reason", ""),
                     },
                 )
             elif event.event_type == "reconciliation_pass":
