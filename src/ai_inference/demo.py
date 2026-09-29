@@ -261,7 +261,10 @@ def main() -> None:
     # Shared state
     result_store = InMemoryResultStore()
     jsonl_sink = JsonlMetricsSink("metrics.jsonl")
-    metrics = MetricsCollector(jsonl_sink)
+    prometheus_sink = PrometheusMetricsSink()
+    metrics = MetricsCollector(
+        CompositeMetricsSink([jsonl_sink, prometheus_sink])
+    )
     audit = InMemoryAuditLog()
     publisher = InProcessPublisher(_work_queue)
     tenant_engine = TenantPolicyEngine(metrics=metrics)
