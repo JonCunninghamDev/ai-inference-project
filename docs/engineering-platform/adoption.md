@@ -9,7 +9,7 @@ This repository adopts the published Engineering Platform release below:
 - immutable release commit: `b107c9306161b395cbcaffebb55e47850b999560`
 - adoption date: 2026-09-29
 
-The release was verified against the Engineering Platform production branch and published GitHub release before adoption.
+The release was verified against the Engineering Platform production branch and published GitHub release before adoption. Initial consumer adoption is tracked by issue #15 and PR #16.
 
 ## Local synchronized surfaces
 
