@@ -3,8 +3,19 @@
   "description": "First hardware-backed inference baseline; execution requires explicit GPU/cloud-spend approval.",
   "api_mode": "asynchronous_polling",
   "authorization": {
-    "gpu_cloud_spend_approved": false,
-    "approval_ceiling_usd": 5
+    "gpu_cloud_spend_approved": true,
+    "approval_ceiling_usd": 5,
+    "approved_at": "2026-09-29",
+    "approved_by": "human",
+    "approved_scope": {
+      "region": "us-east-1",
+      "instance_type": "g6.2xlarge",
+      "purchase_model": "on-demand",
+      "gpu_count": 1,
+      "max_session_hours": 3,
+      "approval_ceiling_usd": 5,
+      "public_inbound_allowed": false
+    }
   },
   "hardware": {
     "cloud": "aws",
