@@ -45,9 +45,21 @@ def test_k6_workload_polls_to_terminal_state_without_claiming_ttft() -> None:
     assert "'/v1/inference'" in script
     assert "'/v1/inference/' + requestId" in script
     assert "inference_terminal_latency_ms" in script
-    assert "inference_terminal_success" in script
+    assert "accepted_terminal_success" in script
+    assert "inference_admission_rejected_rate" in script
     assert "inference_rejected_total" in script
+    assert "unexpected_submit_failure" in script
+    assert "poll_http_failure" in script
+    assert "dropped_iterations" in script
+    assert "preAllocatedVUs: PREALLOCATED_VUS" in script
+    assert "maxVUs:" not in script
+    assert "http_req_failed:" not in script
     assert "ttft" not in script.lower()
+
+    rejection_branch = script.split("if (submit.status === 429)", 1)[1].split(
+        "admissionRejectedRate.add(false)", 1
+    )[0]
+    assert "acceptedTerminalSuccess.add(false)" not in rejection_branch
 
 
 def test_vllm_example_pins_model_revision_and_runtime() -> None:
@@ -93,6 +105,23 @@ def test_production_evidence_profile_keeps_gpu_spend_gate_closed() -> None:
     )
     assert profile["cost_gate"]["max_session_hours"] == 3
     assert profile["cost_gate"]["approval_ceiling_usd"] == 5.0
+    assert profile["network"]["public_inbound_allowed"] is False
+    assert profile["network"]["gateway_bind_host"] == "127.0.0.1"
+    assert profile["network"]["gateway_metrics_exposure"] == "loopback_only"
+    assert profile["network"]["security_group_inbound_rules"] == "none"
+    assert (
+        profile["workload"]["load_generator"]["dropped_iterations_must_equal"]
+        == 0
+    )
+    assert (
+        profile["workload"]["load_generator"]["dynamic_max_vus_enabled"]
+        is False
+    )
+    assert profile["slo_baseline"]["admission_rejection_rate_max"] is None
+    assert (
+        profile["slo_baseline"]["accepted_terminal_success_rate_min"]
+        == 0.99
+    )
 
 
 def test_first_gpu_spend_plan_has_termination_and_source_evidence() -> None:
@@ -105,9 +134,9 @@ def test_first_gpu_spend_plan_has_termination_and_source_evidence() -> None:
     ).read_text(encoding="utf-8")
 
     assert "GPU/cloud spend is **not approved**" in plan
-    assert "Terminate the EC2 instance" in plan
-    assert "three-hour maximum session budget" in plan
-    assert "security group inbound rules: none" in plan
-    assert "Recheck price and capacity immediately before launch" in plan
+    assert "gateway API binds to loopback" in plan
+    assert "dropped_iterations == 0" in plan
+    assert "HTTP 429" in plan
     assert "https://docs.aws.amazon.com/ec2/latest/instancetypes/ac.html" in plan
     assert "https://github.com/vllm-project/vllm/releases" in plan
+    assert "arrival-rate-vu-allocation" in plan
