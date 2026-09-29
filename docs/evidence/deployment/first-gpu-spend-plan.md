@@ -1,6 +1,6 @@
 # First GPU Baseline Spend Plan
 
-Status: planning only; GPU/cloud spend is **not approved**
+Status: plan verified in required consumer CI; GPU/cloud spend is **not approved**
 Date captured: 2026-09-29
 Issue: #23
 
@@ -199,3 +199,18 @@ Current-price indexes used for the point-in-time EC2/Spot rate:
 
 These pricing indexes are point-in-time evidence, not an immutable AWS quote.
 Recheck price and capacity immediately before launch.
+
+
+## CI verification
+
+Planning head verified before the spend gate:
+
+- implementation commit: `940922c421d9e904c61a12d0a4abe70d7ed4ef16`
+- GitHub Actions run: `36630520190`
+- Python: 3.12
+- unit suite: **283 passed in 35.50s**
+- conclusion: `success`
+- AWS/GPU resources created: none
+- cloud spend incurred by this issue: $0
+
+The GPU/cloud spend authorization flag remains false after this verification.
